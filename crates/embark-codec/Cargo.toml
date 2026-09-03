@@ -20,7 +20,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 embark-format.workspace = true
 miniz_oxide = { version = "0.8", default-features = false, features = ["with-alloc"], optional = true }
-lz4_flex = { version = "0.11", default-features = false, features = ["safe-decode", "safe-encode"], optional = true }
+lz4_flex = { version = "0.14", default-features = false, features = ["safe-decode", "safe-encode"], optional = true }
 # ruzstd is a pure-Rust, no_std+alloc zstd implementation. Default features
 # ("hash", "std") are dropped: "hash" only gates the optional xxhash content
 # checksum (we don't need it), and "std" would pull in std::io. Snappy is
