@@ -3,6 +3,7 @@
 mod args;
 mod build;
 
+use embark_format::CodecId;
 use proc_macro::TokenStream;
 use quote::quote;
 
@@ -16,9 +17,17 @@ pub fn embed_bytes(input: TokenStream) -> TokenStream {
             let abs = abs.to_str().expect("embark: non-UTF-8 path");
             quote!(include_bytes!(#abs)).into()
         }
-        Some(_) => {
-            // Transformed mode is added in Task 14.
-            quote!(compile_error!("codec-transformed embed_bytes! not yet implemented")).into()
+        Some(codec) => {
+            let data = build::read(&args.path);
+            let entry = match codec {
+                args::CodecArg::Auto => build::build_entry_best(&data),
+                args::CodecArg::Store => build::build_entry(CodecId::Store, &data),
+                args::CodecArg::Deflate => build::build_entry(CodecId::Deflate, &data),
+                args::CodecArg::Lz4 => build::build_entry(CodecId::Lz4, &data),
+                args::CodecArg::Snappy => build::build_entry(CodecId::Snappy, &data),
+            };
+            let lit = build::bytes_literal(&entry);
+            quote!(::embark::EmbeddedBytes::from_entry(#lit)).into()
         }
     }
 }

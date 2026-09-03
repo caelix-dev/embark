@@ -1,0 +1,1 @@
+Embark compresses this file at build time and decompresses it on demand. Embark compresses this file at build time and decompresses it on demand. Embark compresses this file at build time and decompresses it on demand. Embark compresses this file at build time and decompresses it on demand. Embark compresses this file at build time and decompresses it on demand. 
