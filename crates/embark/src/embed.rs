@@ -45,7 +45,9 @@ enum Source {
 pub struct EmbeddedFile {
     source: Source,
     path: Cow<'static, str>,
-    key: Option<([u8; 32], [u8; 32])>,
+    // For an encrypted entry, the per-build-randomized reconstruction function
+    // that rebuilds the shared build-time key; `None` for plain entries.
+    recon: Option<fn() -> [u8; 32]>,
 }
 
 impl EmbeddedFile {
@@ -74,9 +76,7 @@ impl EmbeddedFile {
     pub fn try_data(&self) -> Result<Cow<'static, [u8]>, embark_format::Error> {
         match &self.source {
             Source::Static(entry) => {
-                let key = self
-                    .key
-                    .map(|(masked, mask)| embark_crypt_xor(masked, mask));
+                let key = self.recon.map(|recon| recon());
                 crate::decode::decode(entry, key)
             }
             #[cfg(feature = "std")]
@@ -107,17 +107,6 @@ impl EmbeddedFile {
     }
 }
 
-#[cfg(feature = "encryption")]
-fn embark_crypt_xor(masked: [u8; 32], mask: [u8; 32]) -> [u8; 32] {
-    embark_crypt::xor32(&masked, &mask)
-}
-
-#[cfg(not(feature = "encryption"))]
-fn embark_crypt_xor(_masked: [u8; 32], _mask: [u8; 32]) -> [u8; 32] {
-    // Unreachable without the encryption feature; the derive never sets a key.
-    [0u8; 32]
-}
-
 /// Iterator over the paths of every file embedded in a `#[derive(Embed)]`
 /// manifest, in sorted order. Returned by [`Embed::iter`] / [`entries`].
 pub struct Entries {
@@ -140,7 +129,7 @@ pub fn lookup(manifest: &'static [Manifest], path: &str) -> Option<EmbeddedFile>
     Some(EmbeddedFile {
         source: Source::Static(m.entry),
         path: Cow::Borrowed(m.path),
-        key: None,
+        recon: None,
     })
 }
 
@@ -154,24 +143,23 @@ pub fn entries(manifest: &'static [Manifest]) -> Entries {
 }
 
 /// Looks up a build-time-encrypted, compiled-in file by path (binary
-/// search) in a `#[derive(Embed)]` manifest, attaching its masked key
-/// material. Used internally by the derive's generated `get()` when
-/// `#[embark(encrypt)]` is set; not normally called directly. See
-/// [`EncryptedFile`](crate::EncryptedFile) for why the build-time key is
+/// search) in a `#[derive(Embed)]` manifest, attaching its per-build
+/// key-reconstruction function. Used internally by the derive's generated
+/// `get()` when `#[embark(encrypt)]` is set; not normally called directly.
+/// See [`EncryptedFile`](crate::EncryptedFile) for why the build-time key is
 /// obfuscation, not security.
 #[cfg(feature = "encryption")]
 pub fn lookup_encrypted(
     manifest: &'static [Manifest],
     path: &str,
-    masked: [u8; 32],
-    mask: [u8; 32],
+    recon: fn() -> [u8; 32],
 ) -> Option<EmbeddedFile> {
     let idx = manifest.binary_search_by(|m| m.path.cmp(path)).ok()?;
     let m = &manifest[idx];
     Some(EmbeddedFile {
         source: Source::Static(m.entry),
         path: Cow::Borrowed(m.path),
-        key: Some((masked, mask)),
+        recon: Some(recon),
     })
 }
 
@@ -187,6 +175,6 @@ pub fn __dev_file(folder_abs: &str, path: &str) -> Option<EmbeddedFile> {
     Some(EmbeddedFile {
         source: Source::Owned(bytes),
         path: Cow::Owned(path.to_string()),
-        key: None,
+        recon: None,
     })
 }

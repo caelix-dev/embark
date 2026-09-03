@@ -26,15 +26,20 @@ pub struct RuntimeKey;
 /// - **`EncryptedFile<EmbeddedKey>`** (the default; plain `EncryptedFile`
 ///   means this) — built with
 ///   [`with_embedded_key`](EncryptedFile::with_embedded_key). The key is
-///   generated at build time, split and XOR-masked across const arrays,
-///   and reassembled at runtime by [`decrypt`](EncryptedFile::decrypt) /
-///   [`decrypt_str`](EncryptedFile::decrypt_str), both infallible by
-///   construction. This is **obfuscation, not security**: the key ships
-///   inside the binary, and anyone with the binary (a reverser, a
-///   disassembler, a memory dump) can recover it and decrypt the payload.
-///   It only raises the bar against casual static extraction — grepping
-///   the binary for plaintext strings — not against a determined
-///   attacker.
+///   generated at build time and reassembled at runtime by a
+///   reconstruction function the macro generates **fresh for every build**:
+///   a randomized, straight-line sequence of invertible byte operations
+///   (XORs, additions, rotations, permutations, reversals) over scattered
+///   key shares, different on each compile. [`decrypt`](EncryptedFile::decrypt)
+///   / [`decrypt_str`](EncryptedFile::decrypt_str) call it to recover the
+///   key; both are infallible by construction. This is
+///   **obfuscation, not security**: the key ships inside the binary, and
+///   anyone with the binary (a reverser, a disassembler, a memory dump) can
+///   recover it and decrypt the payload. The per-build randomization only
+///   raises the bar against casual static extraction — grepping the binary
+///   for plaintext strings, or writing one generic extractor that works on
+///   every `embark` binary — not against a determined attacker willing to
+///   reverse an individual binary.
 /// - **`EncryptedFile<RuntimeKey>`** (opt in with
 ///   `embed_crypt!(..., key = runtime)`) — built with
 ///   [`with_runtime_key`](EncryptedFile::with_runtime_key). No key is ever
@@ -50,32 +55,37 @@ pub struct RuntimeKey;
 /// whenever the embedded content actually needs to stay confidential.
 pub struct EncryptedFile<K = EmbeddedKey> {
     entry: &'static [u8],
-    // Embedded-key material. Unused (left zeroed) for `RuntimeKey` handles,
-    // which never have key material to embed.
-    masked: [u8; 32],
-    mask: [u8; 32],
+    // Per-build-randomized key reconstruction. For `EmbeddedKey` handles this
+    // is the function the macro generated to rebuild the embedded key; for
+    // `RuntimeKey` handles (which embed no key) it is an unused placeholder.
+    recon: fn() -> [u8; 32],
     _mode: PhantomData<K>,
+}
+
+// Placeholder reconstruction for `RuntimeKey` handles, which never embed a
+// key and so never call `recon`. Kept as a plain `fn` so it is a
+// const-constructible function pointer.
+fn no_embedded_key() -> [u8; 32] {
+    [0u8; 32]
 }
 
 impl EncryptedFile<EmbeddedKey> {
     /// Builds a build-time-embedded-key handle from a sealed entry and its
-    /// masked key material.
+    /// key-reconstruction function.
     ///
     /// This is normally emitted by the `embed_crypt!` macro or the
     /// `#[derive(Embed)]` `#[embark(encrypt)]` attribute, not called
-    /// directly. `masked` is the key XORed with `mask`; the two are
-    /// reassembled with [`embark_crypt::xor32`] at decrypt time. See the
-    /// [type-level docs](EncryptedFile) for why this is obfuscation, not
-    /// encryption in the security sense.
+    /// directly. `recon` is a per-build-randomized function the macro
+    /// generates that rebuilds the embedded key when called; it is invoked at
+    /// decrypt time. See the [type-level docs](EncryptedFile) for why this is
+    /// obfuscation, not encryption in the security sense.
     pub const fn with_embedded_key(
         entry: &'static [u8],
-        masked: [u8; 32],
-        mask: [u8; 32],
+        recon: fn() -> [u8; 32],
     ) -> EncryptedFile<EmbeddedKey> {
         EncryptedFile {
             entry,
-            masked,
-            mask,
+            recon,
             _mode: PhantomData,
         }
     }
@@ -95,7 +105,7 @@ impl EncryptedFile<EmbeddedKey> {
     /// Panics only if the embedded entry is malformed -- a build-time bug,
     /// not something a caller can trigger at runtime.
     pub fn decrypt(&self) -> Vec<u8> {
-        let key = embark_crypt::xor32(&self.masked, &self.mask);
+        let key = (self.recon)();
         crate::decode::decode(self.entry, Some(key))
             .expect("embark: embedded entry is malformed (this is a build-time bug)")
             .into_owned()
@@ -105,7 +115,7 @@ impl EncryptedFile<EmbeddedKey> {
     /// UTF-8 and returns a `Result` (rather than panicking) if the
     /// decrypted bytes are not valid UTF-8.
     pub fn decrypt_str(&self) -> Result<String, Error> {
-        let key = embark_crypt::xor32(&self.masked, &self.mask);
+        let key = (self.recon)();
         let bytes = crate::decode::decode(self.entry, Some(key))?.into_owned();
         String::from_utf8(bytes).map_err(|_| Error::Utf8)
     }
@@ -127,8 +137,7 @@ impl EncryptedFile<RuntimeKey> {
     pub const fn with_runtime_key(entry: &'static [u8]) -> EncryptedFile<RuntimeKey> {
         EncryptedFile {
             entry,
-            masked: [0u8; 32],
-            mask: [0u8; 32],
+            recon: no_embedded_key,
             _mode: PhantomData,
         }
     }
