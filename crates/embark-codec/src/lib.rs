@@ -10,6 +10,8 @@ mod deflate;
 mod dispatch;
 #[cfg(feature = "lz4")]
 mod lz4;
+#[cfg(feature = "lzma")]
+mod lzma;
 #[cfg(feature = "snappy")]
 mod snappy;
 mod store;

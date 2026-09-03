@@ -16,7 +16,11 @@ pub fn compress(id: CodecId, input: &[u8]) -> Vec<u8> {
         CodecId::Snappy => crate::snappy::compress(input),
         #[cfg(feature = "zstd")]
         CodecId::Zstd => crate::zstd::compress(input),
+        #[cfg(feature = "lzma")]
+        CodecId::Lzma => crate::lzma::compress(input),
         // Codecs whose feature is off fall back to Store so encoding never fails.
+        // (Unreachable only when every codec feature is enabled at once.)
+        #[allow(unreachable_patterns)]
         _ => crate::store::compress(input),
     }
 }
@@ -33,6 +37,11 @@ pub fn decompress(id: CodecId, input: &[u8], orig_len: usize) -> Result<Vec<u8>,
         CodecId::Snappy => crate::snappy::decompress(input, orig_len),
         #[cfg(feature = "zstd")]
         CodecId::Zstd => crate::zstd::decompress(input, orig_len),
+        #[cfg(feature = "lzma")]
+        CodecId::Lzma => crate::lzma::decompress(input, orig_len),
+        // Reached when an entry names a codec whose feature is disabled;
+        // unreachable only when every codec feature is enabled at once.
+        #[allow(unreachable_patterns)]
         other => Err(Error::UnknownCodec(other.as_u8())),
     }
 }
