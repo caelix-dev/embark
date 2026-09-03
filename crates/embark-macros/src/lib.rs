@@ -3,6 +3,13 @@
 //! its `derive` feature; use them via `embark::embed_bytes!` etc. rather
 //! than depending on this crate directly.
 
+// docs.rs builds with `--cfg docsrs` (see each manifest's
+// `[package.metadata.docs.rs]`), which turns this on and makes rustdoc label
+// every item with the feature that gates it. Nearly all of this API is
+// behind one, so without the label the rendered docs read as though it were
+// all unconditional. Inert on stable, where `docsrs` is never set.
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 mod args;
 mod build;
 mod crypt;

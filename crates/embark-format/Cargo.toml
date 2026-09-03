@@ -11,7 +11,7 @@ description = "Shared on-binary layout for the embark file-embedding toolkit."
 documentation = "https://docs.rs/embark-format"
 keywords = ["embark", "embed", "encoding", "binary", "no-std"]
 categories = ["encoding", "no-std"]
-include = ["src/**/*.rs"]
+include = ["src/**/*.rs", "LICENSE-MIT"]
 
 [package.metadata.docs.rs]
 all-features = true

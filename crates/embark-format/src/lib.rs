@@ -28,6 +28,12 @@
 //! `dec` alone. Both imply `alloc`; `std` is the default and additionally
 //! implies `alloc`.
 
+// docs.rs builds with `--cfg docsrs` (see each manifest's
+// `[package.metadata.docs.rs]`), which turns this on and makes rustdoc label
+// every item with the feature that gates it. Nearly all of this API is
+// behind one, so without the label the rendered docs read as though it were
+// all unconditional. Inert on stable, where `docsrs` is never set.
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(feature = "alloc")]

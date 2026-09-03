@@ -11,7 +11,7 @@ description = "Unified compression codec layer for embark."
 documentation = "https://docs.rs/embark-codec"
 keywords = ["compression", "deflate", "lz4", "zstd", "snappy"]
 categories = ["compression", "no-std"]
-include = ["src/**/*.rs"]
+include = ["src/**/*.rs", "LICENSE-MIT"]
 
 [package.metadata.docs.rs]
 all-features = true

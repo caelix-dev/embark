@@ -21,6 +21,10 @@
 //! `dec` the decompressing half; a consumer that only reads embedded files
 //! needs `dec` plus the codecs its entries actually use.
 //!
+//! `parallel-encode` is separate from all of those: it does not change what
+//! is compiled, only how fast `enc` runs, by letting the encoder use more
+//! than one thread. See [`parallel`].
+//!
 //! A codec that was not compiled in is not an error at the format level:
 //! [`decompress`] reports [`Error::UnknownCodec`](embark_format::Error::UnknownCodec)
 //! for it, and [`compress`] falls back to [`CodecId::Store`](embark_format::CodecId::Store)
@@ -42,6 +46,12 @@
 //! # Ok::<(), embark_format::Error>(())
 //! ```
 
+// docs.rs builds with `--cfg docsrs` (see each manifest's
+// `[package.metadata.docs.rs]`), which turns this on and makes rustdoc label
+// every item with the feature that gates it. Nearly all of this API is
+// behind one, so without the label the rendered docs read as though it were
+// all unconditional. Inert on stable, where `docsrs` is never set.
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(feature = "alloc")]

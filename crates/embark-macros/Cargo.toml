@@ -11,7 +11,7 @@ description = "Procedural macros for embark (build-time only)."
 documentation = "https://docs.rs/embark-macros"
 keywords = ["embark", "embed", "derive", "macros", "assets"]
 categories = ["development-tools::build-utils"]
-include = ["src/**/*.rs"]
+include = ["src/**/*.rs", "LICENSE-MIT"]
 
 [package.metadata.docs.rs]
 all-features = true

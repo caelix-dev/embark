@@ -44,7 +44,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `all-features = true` so docs.rs renders the encryption and
   zstd/LZMA/AES surface instead of only the default features.
 - `include` on every crate, so a published `.crate` no longer ships the
-  test assets and fixtures.
+  test assets and fixtures. Each one carries a copy of `LICENSE-MIT`:
+  `license = "MIT"` tells crates.io what the terms are, but the terms
+  themselves say the notice travels with the copy, and a `.crate` is a copy.
+- `#![cfg_attr(docsrs, feature(doc_cfg))]` on all five crates, so docs.rs
+  labels each item with the feature that gates it. The manifests already
+  asked for `--cfg docsrs`; nothing read it, and almost every item here is
+  behind a feature, so the rendered docs read as though none of them were.
 
 ### Changed
 

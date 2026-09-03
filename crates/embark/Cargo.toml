@@ -13,6 +13,7 @@ keywords = ["embed", "assets", "compression", "encryption", "no-std"]
 categories = ["compression", "cryptography", "development-tools::build-utils", "no-std"]
 include = [
     "src/**/*.rs",
+    "LICENSE-MIT",
     "examples/**/*.rs",
     "examples/assets/**",
 ]

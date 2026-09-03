@@ -11,7 +11,7 @@ description = "ChaCha20-Poly1305 / AES-256-GCM AEAD wrapper for embark, with bui
 documentation = "https://docs.rs/embark-crypt"
 keywords = ["encryption", "aead", "chacha20", "aes-gcm", "embark"]
 categories = ["cryptography", "no-std"]
-include = ["src/**/*.rs"]
+include = ["src/**/*.rs", "LICENSE-MIT"]
 
 [package.metadata.docs.rs]
 all-features = true
