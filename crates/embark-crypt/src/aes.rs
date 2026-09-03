@@ -3,9 +3,9 @@ use embark_format::Error;
 extern crate alloc;
 use alloc::vec::Vec;
 
-use aes_gcm::aead::{AeadInPlace, KeyInit};
 #[cfg(feature = "dec")]
 use aes_gcm::Tag;
+use aes_gcm::aead::{AeadInPlace, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 
 #[cfg(feature = "enc")]

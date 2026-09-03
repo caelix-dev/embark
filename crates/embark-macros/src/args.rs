@@ -40,7 +40,7 @@ impl Parse for Args {
                     return Err(syn::Error::new(
                         val.span(),
                         format!("unknown codec `{other}`"),
-                    ))
+                    ));
                 }
             });
         }

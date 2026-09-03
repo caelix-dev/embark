@@ -1,7 +1,7 @@
 #![cfg(all(feature = "std", feature = "encryption"))]
 use embark::EncryptedFile;
 use embark_crypt::seal;
-use embark_format::{write_entry, CodecId, CryptoId};
+use embark_format::{CodecId, CryptoId, write_entry};
 
 fn encrypted_entry(plain: &[u8], key: [u8; 32], nonce: [u8; 12]) -> Vec<u8> {
     encrypted_entry_with(CryptoId::ChaCha20Poly1305, plain, key, nonce)

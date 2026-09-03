@@ -1,5 +1,5 @@
 use embark_crypt::{gen_key_nonce, seal};
-use embark_format::{write_entry, CodecId, CryptoId};
+use embark_format::{CodecId, CryptoId, write_entry};
 
 pub(crate) enum KeyMode {
     BuildTime,

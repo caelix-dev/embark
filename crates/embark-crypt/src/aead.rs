@@ -3,9 +3,9 @@ use embark_format::Error;
 extern crate alloc;
 use alloc::vec::Vec;
 
-use chacha20poly1305::aead::{AeadInPlace, KeyInit};
 #[cfg(feature = "dec")]
 use chacha20poly1305::Tag;
+use chacha20poly1305::aead::{AeadInPlace, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 
 #[cfg(feature = "enc")]

@@ -1,7 +1,7 @@
 #![cfg(all(feature = "std", feature = "deflate"))]
 use embark::EmbeddedBytes;
 use embark_codec::compress;
-use embark_format::{write_entry, CodecId, CryptoId};
+use embark_format::{CodecId, CryptoId, write_entry};
 use std::borrow::Cow;
 
 fn make_entry(codec: CodecId, data: &[u8]) -> Vec<u8> {

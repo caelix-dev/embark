@@ -1,7 +1,7 @@
 #![cfg(all(feature = "std", feature = "deflate"))]
 use embark::{Embed, EmbeddedFile, Manifest};
 use embark_codec::compress;
-use embark_format::{write_entry, CodecId, CryptoId};
+use embark_format::{CodecId, CryptoId, write_entry};
 
 fn entry(codec: CodecId, data: &[u8]) -> &'static [u8] {
     let payload = compress(codec, data);

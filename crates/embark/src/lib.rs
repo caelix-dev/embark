@@ -51,7 +51,7 @@ pub use embark_format::Error;
 pub use embed::__dev_file;
 #[cfg(feature = "encryption")]
 pub use embed::lookup_encrypted;
-pub use embed::{entries, lookup, Embed, EmbeddedFile, Entries, Manifest};
+pub use embed::{Embed, EmbeddedFile, Entries, Manifest, entries, lookup};
 #[cfg(feature = "encryption")]
 pub use encrypted::{EmbeddedKey, EncryptedFile, RuntimeKey};
 
@@ -76,7 +76,7 @@ pub use embark_crypt::Aes256Gcm;
 pub use embark_crypt::{Aead, ChaCha20Poly1305};
 
 #[cfg(feature = "derive")]
-pub use embark_macros::{embed_bytes, embed_crypt, Embed};
+pub use embark_macros::{Embed, embed_bytes, embed_crypt};
 
 #[cfg(feature = "metadata")]
 #[doc(hidden)]

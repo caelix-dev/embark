@@ -1,6 +1,6 @@
 use alloc::borrow::Cow;
 use alloc::vec::Vec;
-use embark_format::{read_header, CodecId, CryptoId, Error};
+use embark_format::{CodecId, CryptoId, Error, read_header};
 
 pub(crate) fn decode(
     entry: &'static [u8],

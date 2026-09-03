@@ -1,4 +1,4 @@
-use embark_format::{write_entry, CodecId, CryptoId};
+use embark_format::{CodecId, CryptoId, write_entry};
 use quote::quote;
 use std::path::{Path, PathBuf};
 

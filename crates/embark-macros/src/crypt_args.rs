@@ -73,7 +73,7 @@ impl Parse for CryptArgs {
                         return Err(syn::Error::new(
                             val.span(),
                             format!("unknown codec `{other}`"),
-                        ))
+                        ));
                     }
                 });
             } else if key == "cipher" {
@@ -93,7 +93,7 @@ impl Parse for CryptArgs {
                         return Err(syn::Error::new(
                             val.span(),
                             format!("unknown cipher `{other}`"),
-                        ))
+                        ));
                     }
                 });
             } else if key == "key" {

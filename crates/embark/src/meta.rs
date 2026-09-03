@@ -1,4 +1,3 @@
-#![cfg(feature = "metadata")]
 use crate::embed::EmbeddedFile;
 
 impl EmbeddedFile {
