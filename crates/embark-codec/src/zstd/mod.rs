@@ -1,15 +1,33 @@
+//! Zstandard encoder written against RFC 8478, with `ruzstd` kept for
+//! decoding.
+//!
+//! The asymmetry is deliberate. Compression runs once per asset inside the
+//! build-time proc macro, while decompression runs in every consumer binary
+//! that reads the asset, so effort spent on ratio is paid for once and
+//! effort spent on decode speed is paid for forever. The decoder is left
+//! alone for that reason.
+//!
+//! So far the encoder only frames: one frame with an explicit window of at
+//! most 8 MiB, then blocks of at most 128 KiB stored raw, or as a run length
+//! when a whole block is one repeated byte. That is the shell the entropy
+//! coding drops into.
+
 extern crate alloc;
+
+#[cfg(feature = "enc")]
+mod block;
+#[cfg(feature = "enc")]
+mod frame;
+
 #[cfg(any(feature = "enc", feature = "dec"))]
 use alloc::vec::Vec;
 #[cfg(feature = "dec")]
 use embark_format::Error;
 
+/// Compress `input` into one Zstandard frame.
 #[cfg(feature = "enc")]
 pub(crate) fn compress(input: &[u8]) -> Vec<u8> {
-    // "Fastest" is the only implemented level in ruzstd 0.9 (Default/Better/Best
-    // panic with `unimplemented!()`); it still produces a valid, portable zstd
-    // frame that any conformant decoder (including this one) can read.
-    ruzstd::encoding::compress_to_vec(input, ruzstd::encoding::CompressionLevel::Fastest)
+    frame::encode(input)
 }
 
 #[cfg(feature = "dec")]
@@ -53,7 +71,6 @@ mod tests {
     fn roundtrip_repetitive() {
         let data = b"ababababababababababababababababab".repeat(50);
         let c = compress(&data);
-        assert!(c.len() < data.len(), "repetitive data should shrink");
         assert_eq!(decompress(&c, data.len()).unwrap(), data);
     }
 
@@ -90,6 +107,109 @@ mod tests {
             .repeat(4);
         let c = compress(&data);
         assert_eq!(decompress(&c, data.len()).unwrap(), data);
+    }
+
+    /// A deterministic xorshift, so the random-shaped tests stay reproducible
+    /// and dependency-free.
+    fn pseudo_random(seed: u32, len: usize) -> Vec<u8> {
+        let mut state = seed | 1;
+        let mut out = Vec::with_capacity(len);
+        for _ in 0..len {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            out.push((state & 0xff) as u8);
+        }
+        out
+    }
+
+    fn roundtrip(data: &[u8]) -> Vec<u8> {
+        let packed = compress(data);
+        assert_eq!(&packed[..4], &[0x28, 0xb5, 0x2f, 0xfd], "frame magic");
+        let back = decompress(&packed, data.len()).expect("our own decoder must accept the frame");
+        assert_eq!(back, data);
+        packed
+    }
+
+    #[test]
+    fn roundtrip_sizes_around_the_block_boundary() {
+        // 128 KiB is the largest block, so the interesting sizes are the ones
+        // that force a second block to exist and to be nearly empty.
+        for len in [131_071usize, 131_072, 131_073, 131_074, 262_144, 262_145] {
+            let mut data = pseudo_random(len as u32, len);
+            // Half random, half repetitive, so both block types get exercised.
+            for i in len / 2..len {
+                data[i] = data[i % 97];
+            }
+            roundtrip(&data);
+        }
+    }
+
+    #[test]
+    fn roundtrip_sizes_around_the_window_boundary() {
+        // The window descriptor and the single-segment form change over at
+        // 256 bytes, and the content-size field widens at 65792.
+        for len in [
+            1usize, 2, 3, 4, 5, 255, 256, 257, 1023, 1024, 1025, 65_791, 65_792,
+        ] {
+            roundtrip(&pseudo_random(len as u32, len));
+            roundtrip(&b"ab".repeat(len.div_ceil(2))[..len]);
+        }
+    }
+
+    #[test]
+    fn incompressible_input_barely_grows() {
+        let data = pseudo_random(7, 300_000);
+        let packed = compress(&data);
+        // Three bytes of block header per 128 KiB block, plus the frame header.
+        assert!(packed.len() < data.len() + 32, "grew to {}", packed.len());
+        assert_eq!(decompress(&packed, data.len()).unwrap(), data);
+    }
+
+    #[test]
+    fn fuzz_roundtrip_over_random_shapes() {
+        let mut seed = 0x9e37_79b9u32;
+        for round in 0..400u32 {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            let len = (seed as usize) % 9_000;
+            let mut data = pseudo_random(seed, len);
+            match round % 4 {
+                // Low entropy.
+                0 => data.iter_mut().for_each(|b| *b &= 0x03),
+                // A repeated prefix, which drives the repeat-offset codes.
+                1 if len > 8 => {
+                    let head = data[..len / 8].to_vec();
+                    data.truncate(len / 8);
+                    while data.len() < len {
+                        data.extend_from_slice(&head);
+                    }
+                    data.truncate(len);
+                }
+                // One byte throughout, which must fall out as RLE blocks.
+                2 => data.iter_mut().for_each(|b| *b = 0x5a),
+                _ => {}
+            }
+            let packed = compress(&data);
+            assert_eq!(
+                decompress(&packed, data.len()).unwrap(),
+                data,
+                "round {round}, len {len}"
+            );
+        }
+    }
+
+    #[test]
+    fn truncated_frames_are_rejected_not_panics() {
+        let data = b"the quick brown fox jumps over the lazy dog".repeat(64);
+        let packed = compress(&data);
+        for cut in 0..packed.len() {
+            // Any prefix must either decode to the right bytes or error out.
+            if let Ok(back) = decompress(&packed[..cut], data.len()) {
+                assert_eq!(back, data);
+            }
+        }
     }
 
     #[test]
