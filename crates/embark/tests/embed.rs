@@ -55,6 +55,15 @@ fn get_and_iter() {
         &b"beta".repeat(50)[..]
     );
     assert!(Assets::get("missing").is_none());
-    let paths: Vec<_> = Assets::iter().map(|p| p.into_owned()).collect();
-    assert_eq!(paths, vec!["a.txt".to_string(), "b.txt".to_string()]);
+    let paths: Vec<&str> = Assets::iter().collect();
+    assert_eq!(paths, ["a.txt", "b.txt"]);
+}
+
+#[test]
+fn entries_is_exact_sized_and_reversible() {
+    let it = Assets::iter();
+    assert_eq!(it.len(), 2);
+    assert_eq!(it.size_hint(), (2, Some(2)));
+    let back: Vec<&str> = Assets::iter().rev().collect();
+    assert_eq!(back, ["b.txt", "a.txt"]);
 }

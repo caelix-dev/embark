@@ -121,16 +121,38 @@ impl EmbeddedFile {
 
 /// Iterator over the paths of every file embedded in a `#[derive(Embed)]`
 /// manifest, in sorted order. Returned by [`Embed::iter`] / [`entries`].
+///
+/// Yields `&'static str`: the paths are compiled into the binary, so they
+/// outlive the iterator and never need to be owned.
 pub struct Entries {
     inner: core::slice::Iter<'static, Manifest>,
 }
 
 impl Iterator for Entries {
-    type Item = Cow<'static, str>;
+    type Item = &'static str;
+
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|m| Cow::Borrowed(m.path))
+        self.inner.next().map(|m| m.path)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
     }
 }
+
+impl DoubleEndedIterator for Entries {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.inner.next_back().map(|m| m.path)
+    }
+}
+
+impl ExactSizeIterator for Entries {
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+impl core::iter::FusedIterator for Entries {}
 
 /// Looks up an unencrypted, compiled-in file by path (binary search) in a
 /// `#[derive(Embed)]` manifest. Used internally by the derive's generated
