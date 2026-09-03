@@ -20,6 +20,8 @@ mod bitstream;
 #[cfg(feature = "enc")]
 mod block;
 #[cfg(feature = "enc")]
+mod distribution;
+#[cfg(feature = "enc")]
 mod frame;
 #[cfg(feature = "enc")]
 mod fse;

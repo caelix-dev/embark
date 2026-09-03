@@ -9,6 +9,7 @@
 use alloc::vec::Vec;
 
 use super::bitstream::BitWriter;
+use super::distribution;
 use super::fse::Encoder;
 
 /// Accuracy log for the weight distribution. Six is the format's maximum
@@ -36,96 +37,11 @@ pub(super) fn compress(weights: &[u8]) -> Option<Vec<u8>> {
     if counts.iter().filter(|&&c| c > 0).count() < 2 {
         return None;
     }
-    let distribution = normalize(&counts);
+    let normalized = distribution::normalize(&counts, LOG);
 
-    let mut description = BitWriter::new();
-    write_distribution(&mut description, &distribution);
-    let mut out = description.finish_forward();
-    out.extend_from_slice(&write_stream(weights, &Encoder::new(&distribution, LOG)));
+    let mut out = distribution::describe(&normalized, LOG);
+    out.extend_from_slice(&write_stream(weights, &Encoder::new(&normalized, LOG)));
     (out.len() <= MAX_SIZE).then_some(out)
-}
-
-/// Scale `counts` onto `1 << LOG` points, giving every present symbol at
-/// least one, then settle the rounding error on the busiest symbols.
-fn normalize(counts: &[u32; ALPHABET]) -> [i16; ALPHABET] {
-    let total: u64 = counts.iter().map(|&c| u64::from(c)).sum();
-    let target = 1i32 << LOG;
-    let mut normalized = [0i16; ALPHABET];
-    let mut used = 0i32;
-    for (symbol, &count) in counts.iter().enumerate() {
-        if count == 0 {
-            continue;
-        }
-        let scaled = (u64::from(count) * (target as u64) * 2 / total).div_ceil(2);
-        let points = (scaled as i32).max(1);
-        normalized[symbol] = points as i16;
-        used += points;
-    }
-    // Take from, or give to, whichever symbol currently holds the most
-    // points: that is where a one-point change costs the least.
-    while used != target {
-        let pick = (0..ALPHABET)
-            .filter(|&s| normalized[s] > if used > target { 1 } else { 0 })
-            .max_by_key(|&s| normalized[s]);
-        let Some(symbol) = pick else { break };
-        if used > target {
-            normalized[symbol] -= 1;
-            used -= 1;
-        } else {
-            normalized[symbol] += 1;
-            used += 1;
-        }
-    }
-    normalized
-}
-
-/// Write the table description: the accuracy log, then each probability in a
-/// field whose width shrinks as the remaining points run out (RFC 8478,
-/// section 4.1.1).
-fn write_distribution(bw: &mut BitWriter, distribution: &[i16; ALPHABET]) {
-    bw.push(LOG - 5, 4);
-    let last = distribution
-        .iter()
-        .rposition(|&points| points != 0)
-        .unwrap_or(0);
-    let mut remaining = 1i32 << LOG;
-    let mut symbol = 0usize;
-    while symbol <= last {
-        let ceiling = (remaining + 1) as u32;
-        let bits = u32::BITS - ceiling.leading_zeros();
-        // Values below the threshold are one bit shorter, which is what lets
-        // the field width fall between powers of two.
-        let threshold = (1u32 << bits) - 1 - ceiling;
-        let value = (distribution[symbol] + 1) as u32;
-        if value < threshold {
-            bw.push(value, bits - 1);
-        } else if value < 1 << (bits - 1) {
-            bw.push(value, bits);
-        } else {
-            bw.push(value + threshold, bits);
-        }
-        remaining -= i32::from(distribution[symbol]);
-
-        if distribution[symbol] == 0 {
-            // A zero is followed by a repeat count of further zeroes, in
-            // two-bit groups, where a full group means another one follows.
-            let mut run = 0usize;
-            while symbol + 1 + run <= last && distribution[symbol + 1 + run] == 0 {
-                run += 1;
-            }
-            symbol += run;
-            loop {
-                if run >= 3 {
-                    bw.push(3, 2);
-                    run -= 3;
-                } else {
-                    bw.push(run as u32, 2);
-                    break;
-                }
-            }
-        }
-        symbol += 1;
-    }
 }
 
 /// Entropy-code the weight series with two interleaved states.

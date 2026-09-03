@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 
 use super::huffman;
 use super::matcher::{self, Match};
-use super::sequences::{self, Coded, Tables};
+use super::sequences::{self, Coded};
 
 /// Largest decompressed size of one block.
 pub(super) const MAX_BLOCK: usize = 128 * 1024;
@@ -28,17 +28,9 @@ struct Chunk {
 /// Write every block of the frame, marking the last one.
 pub(super) fn write_all(out: &mut Vec<u8>, input: &[u8], matches: &[Match]) {
     let chunks = plan(input.len(), matches);
-    let tables = Tables::new();
     let mut repeats = [1usize, 4, 8];
     for (i, chunk) in chunks.iter().enumerate() {
-        write_one(
-            out,
-            input,
-            chunk,
-            &tables,
-            &mut repeats,
-            i + 1 == chunks.len(),
-        );
+        write_one(out, input, chunk, &mut repeats, i + 1 == chunks.len());
     }
 }
 
@@ -93,14 +85,7 @@ fn plan(len: usize, matches: &[Match]) -> Vec<Chunk> {
     chunks
 }
 
-fn write_one(
-    out: &mut Vec<u8>,
-    input: &[u8],
-    chunk: &Chunk,
-    tables: &Tables,
-    repeats: &mut [usize; 3],
-    last: bool,
-) {
+fn write_one(out: &mut Vec<u8>, input: &[u8], chunk: &Chunk, repeats: &mut [usize; 3], last: bool) {
     let raw = &input[chunk.start..chunk.end];
     // One repeated byte costs a single byte as an RLE block, which nothing
     // else can beat, so that case never needs the sequence encoder.
@@ -110,7 +95,7 @@ fn write_one(
         return;
     }
     let mut trial = *repeats;
-    let body = compressed_body(input, chunk, tables, &mut trial);
+    let body = compressed_body(input, chunk, &mut trial);
     // A `Compressed_Block` is only legal when it is strictly smaller than what
     // it stands for, which is also the only case in which it is worth using.
     // Blocks that are not compressed leave the offset history alone.
@@ -130,12 +115,7 @@ fn write_header(out: &mut Vec<u8>, size: usize, kind: u8, last: bool) {
 }
 
 /// Build a `Compressed_Block` body: the literals section, then the sequences.
-fn compressed_body(
-    input: &[u8],
-    chunk: &Chunk,
-    tables: &Tables,
-    repeats: &mut [usize; 3],
-) -> Vec<u8> {
+fn compressed_body(input: &[u8], chunk: &Chunk, repeats: &mut [usize; 3]) -> Vec<u8> {
     let mut literals = Vec::new();
     let mut coded = Vec::with_capacity(chunk.seqs.len());
     let mut at = chunk.start;
@@ -153,7 +133,7 @@ fn compressed_body(
 
     let mut body = Vec::with_capacity(literals.len() + coded.len() * 4 + 8);
     write_literals(&mut body, &literals);
-    sequences::write_section(&mut body, &coded, tables);
+    sequences::write_section(&mut body, &coded);
     body
 }
 

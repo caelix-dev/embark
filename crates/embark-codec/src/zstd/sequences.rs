@@ -1,9 +1,11 @@
 //! Sequence codes and the interleaved FSE bitstream of a compressed block.
 
+use alloc::vec;
 use alloc::vec::Vec;
 
 use super::bitstream::BitWriter;
-use super::fse::{self, Encoder};
+use super::distribution;
+use super::fse::{self, Encoder, Step};
 
 /// Literals-length baselines (RFC 8478, section 3.1.1.3.2.1.1).
 const LL_BASE: [u32; 36] = [
@@ -27,6 +29,17 @@ const ML_EXTRA: [u32; 53] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     1, 1, 1, 1, 2, 2, 3, 3, 4, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
 ];
+
+/// Largest accuracy log the format allows for each symbol type.
+const LL_MAX_LOG: u32 = 9;
+const ML_MAX_LOG: u32 = 9;
+const OF_MAX_LOG: u32 = 8;
+/// Smallest accuracy log a table description can express.
+const MIN_LOG: u32 = 5;
+
+const PREDEFINED: u8 = 0;
+const RLE: u8 = 1;
+const FSE_COMPRESSED: u8 = 2;
 
 /// One sequence, already reduced to codes and the raw bits that go with them.
 pub(super) struct Coded {
@@ -67,28 +80,133 @@ fn code_of(bases: &[u32], value: u32) -> u32 {
     (bases.partition_point(|&b| b <= value) - 1) as u32
 }
 
-/// The three predefined tables, built once per frame.
-pub(super) struct Tables {
-    literal_len: Encoder,
-    match_len: Encoder,
-    offset: Encoder,
+/// How one symbol type is entropy-coded in this block.
+struct Coder {
+    mode: u8,
+    /// Absent for RLE mode, which spends no bits: with a single-cell table
+    /// the initial state and every update are zero bits wide.
+    table: Option<Encoder>,
+    log: u32,
+    /// The table description, empty unless the mode is `FSE_Compressed`.
+    description: Vec<u8>,
 }
 
-impl Tables {
-    pub(super) fn new() -> Self {
-        Self {
-            literal_len: Encoder::new(&fse::LL_DEFAULT, fse::LL_LOG),
-            match_len: Encoder::new(&fse::ML_DEFAULT, fse::ML_LOG),
-            offset: Encoder::new(&fse::OF_DEFAULT, fse::OF_LOG),
+impl Coder {
+    fn initial_state(&self, symbol: u32) -> u16 {
+        self.table
+            .as_ref()
+            .map_or(0, |table| table.initial_state(symbol))
+    }
+
+    fn step(&self, symbol: u32, target: u16) -> Step {
+        self.table
+            .as_ref()
+            .map_or_else(Step::default, |table| table.step(symbol, target))
+    }
+
+    /// Pick the cheapest of the three modes for a symbol type.
+    ///
+    /// A single symbol goes RLE, which costs one byte and no bits at all.
+    /// Otherwise a table built for this block competes with the predefined
+    /// one, paying for its own description.
+    fn choose(counts: &[u32], predefined: &[i16], predefined_log: u32, max_log: u32) -> Self {
+        let present = counts.iter().filter(|&&c| c > 0).count();
+        if present == 1 {
+            let symbol = counts.iter().position(|&c| c > 0).unwrap_or(0);
+            return Self {
+                mode: RLE,
+                table: None,
+                log: 0,
+                description: vec![symbol as u8],
+            };
         }
+
+        let last = counts.iter().rposition(|&c| c > 0).unwrap_or(0);
+        let mut best: Option<(u64, Self)> = None;
+        if last < predefined.len() {
+            let cost = estimate(counts, predefined, predefined_log);
+            best = Some((
+                cost,
+                Self {
+                    mode: PREDEFINED,
+                    table: Some(Encoder::new(predefined, predefined_log)),
+                    log: predefined_log,
+                    description: Vec::new(),
+                },
+            ));
+        }
+
+        // The table needs at least one cell per present symbol, and a wider
+        // table describes the distribution more finely but costs more to
+        // describe, so every legal width is tried.
+        let floor = ceil_log2(present).max(MIN_LOG);
+        for log in floor..=max_log {
+            let normalized = distribution::normalize(&counts[..=last], log);
+            let description = distribution::describe(&normalized, log);
+            let cost = estimate(counts, &normalized, log) + description.len() as u64 * 8 * 256;
+            if best.as_ref().is_none_or(|(best_cost, _)| cost < *best_cost) {
+                best = Some((
+                    cost,
+                    Self {
+                        mode: FSE_COMPRESSED,
+                        table: Some(Encoder::new(&normalized, log)),
+                        log,
+                        description,
+                    },
+                ));
+            }
+        }
+        // Every alphabet here has at least two symbols and at most 512
+        // cells, so some width always fits.
+        best.map_or_else(
+            || Self {
+                mode: PREDEFINED,
+                table: Some(Encoder::new(predefined, predefined_log)),
+                log: predefined_log,
+                description: Vec::new(),
+            },
+            |(_, coder)| coder,
+        )
     }
 }
 
-/// Serialize the sequences section of one block.
+/// Cost of coding `counts` against `distribution`, in 1/256ths of a bit.
 ///
-/// All three symbol types use `Predefined_Mode`, so the section is just the
-/// sequence count, the mode byte and the bitstream.
-pub(super) fn write_section(out: &mut Vec<u8>, seqs: &[Coded], tables: &Tables) {
+/// An FSE symbol holding `p` of the `1 << log` cells costs about
+/// `log - log2(p)` bits, which is close enough to rank two tables.
+fn estimate(counts: &[u32], distribution: &[i16], log: u32) -> u64 {
+    let mut total = 0u64;
+    for (symbol, &count) in counts.iter().enumerate() {
+        if count == 0 {
+            continue;
+        }
+        // A "less than one" cell is a full state reset, so it costs the
+        // whole accuracy log, the same as a single-cell symbol.
+        let points = distribution[symbol].max(1) as u32;
+        let bits = log * 256 - distribution::log2_fixed(points);
+        total += u64::from(count) * u64::from(bits);
+    }
+    total
+}
+
+fn ceil_log2(n: usize) -> u32 {
+    if n <= 1 {
+        0
+    } else {
+        usize::BITS - (n - 1).leading_zeros()
+    }
+}
+
+fn counts_of(seqs: &[Coded], alphabet: usize, pick: fn(&Coded) -> u32) -> Vec<u32> {
+    let mut counts = vec![0u32; alphabet];
+    for seq in seqs {
+        counts[pick(seq) as usize] += 1;
+    }
+    counts
+}
+
+/// Serialize the sequences section of one block.
+pub(super) fn write_section(out: &mut Vec<u8>, seqs: &[Coded]) {
     let count = seqs.len();
     if count == 0 {
         out.push(0);
@@ -105,10 +223,33 @@ pub(super) fn write_section(out: &mut Vec<u8>, seqs: &[Coded], tables: &Tables) 
         out.push(rest as u8);
         out.push((rest >> 8) as u8);
     }
-    // Literal lengths, offsets and match lengths all in Predefined_Mode,
-    // reserved bits zero (RFC 8478, section 3.1.1.3.2.1).
-    out.push(0);
-    out.extend_from_slice(&write_bitstream(seqs, tables));
+
+    let literal_len = Coder::choose(
+        &counts_of(seqs, LL_BASE.len(), |s| s.ll_code),
+        &fse::LL_DEFAULT,
+        fse::LL_LOG,
+        LL_MAX_LOG,
+    );
+    let offset = Coder::choose(
+        &counts_of(seqs, fse::OF_DEFAULT.len(), |s| s.of_code),
+        &fse::OF_DEFAULT,
+        fse::OF_LOG,
+        OF_MAX_LOG,
+    );
+    let match_len = Coder::choose(
+        &counts_of(seqs, ML_BASE.len(), |s| s.ml_code),
+        &fse::ML_DEFAULT,
+        fse::ML_LOG,
+        ML_MAX_LOG,
+    );
+
+    // Modes, then the tables in the order the decoder expects them, then
+    // the bitstream (RFC 8478, section 3.1.1.3.2).
+    out.push(literal_len.mode << 6 | offset.mode << 4 | match_len.mode << 2);
+    out.extend_from_slice(&literal_len.description);
+    out.extend_from_slice(&offset.description);
+    out.extend_from_slice(&match_len.description);
+    out.extend_from_slice(&write_bitstream(seqs, &literal_len, &offset, &match_len));
 }
 
 /// Build the interleaved FSE bitstream.
@@ -117,18 +258,18 @@ pub(super) fn write_section(out: &mut Vec<u8>, seqs: &[Coded], tables: &Tables) 
 /// for each sequence its offset, match-length and literals-length extra
 /// bits, then (except after the last sequence) the state updates. Writing is
 /// that list reversed, which is why this walks the sequences from the back.
-fn write_bitstream(seqs: &[Coded], tables: &Tables) -> Vec<u8> {
+fn write_bitstream(seqs: &[Coded], ll: &Coder, of: &Coder, ml: &Coder) -> Vec<u8> {
     let mut bw = BitWriter::new();
     let last = &seqs[seqs.len() - 1];
-    let mut ll_state = tables.literal_len.initial_state(last.ll_code);
-    let mut ml_state = tables.match_len.initial_state(last.ml_code);
-    let mut of_state = tables.offset.initial_state(last.of_code);
+    let mut ll_state = ll.initial_state(last.ll_code);
+    let mut ml_state = ml.initial_state(last.ml_code);
+    let mut of_state = of.initial_state(last.of_code);
     push_extra(&mut bw, last);
 
     for seq in seqs[..seqs.len() - 1].iter().rev() {
-        let of_step = tables.offset.step(seq.of_code, of_state);
-        let ml_step = tables.match_len.step(seq.ml_code, ml_state);
-        let ll_step = tables.literal_len.step(seq.ll_code, ll_state);
+        let of_step = of.step(seq.of_code, of_state);
+        let ml_step = ml.step(seq.ml_code, ml_state);
+        let ll_step = ll.step(seq.ll_code, ll_state);
         bw.push(u32::from(of_state - of_step.baseline), of_step.bits);
         bw.push(u32::from(ml_state - ml_step.baseline), ml_step.bits);
         bw.push(u32::from(ll_state - ll_step.baseline), ll_step.bits);
@@ -138,9 +279,9 @@ fn write_bitstream(seqs: &[Coded], tables: &Tables) -> Vec<u8> {
         push_extra(&mut bw, seq);
     }
 
-    bw.push(u32::from(ml_state), fse::ML_LOG);
-    bw.push(u32::from(of_state), fse::OF_LOG);
-    bw.push(u32::from(ll_state), fse::LL_LOG);
+    bw.push(u32::from(ml_state), ml.log);
+    bw.push(u32::from(of_state), of.log);
+    bw.push(u32::from(ll_state), ll.log);
     bw.finish()
 }
 
