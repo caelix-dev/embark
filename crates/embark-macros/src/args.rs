@@ -12,7 +12,9 @@ pub enum CodecArg {
 }
 
 pub struct Args {
-    pub path: String,
+    // Kept as the literal, not its value: downstream errors (a missing file,
+    // say) are spanned at it so the caret lands on the path the user wrote.
+    pub path: LitStr,
     pub codec: Option<CodecArg>,
 }
 
@@ -44,9 +46,6 @@ impl Parse for Args {
                 }
             });
         }
-        Ok(Args {
-            path: path.value(),
-            codec,
-        })
+        Ok(Args { path, codec })
     }
 }

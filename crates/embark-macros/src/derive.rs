@@ -2,9 +2,12 @@ use crate::{build, crypt, glob};
 use embark_format::{CodecId, CryptoId};
 use quote::quote;
 use std::path::Path;
+use syn::LitStr;
 
 struct Config {
-    folder: String,
+    // The literal, not its value: every folder-related diagnostic below is
+    // spanned at it, so the caret lands on the path the user wrote.
+    folder: LitStr,
     codec: CodecId,
     cipher: CryptoId,
     auto: bool,
@@ -14,19 +17,17 @@ struct Config {
     exclude: Vec<String>,
 }
 
-pub fn expand(input: syn::DeriveInput) -> proc_macro2::TokenStream {
+pub fn expand(input: &syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let name = &input.ident;
-    let cfg = parse_config(&input);
+    let cfg = parse_config(input)?;
+    let folder_span = cfg.folder.span();
 
     let folder_abs = build::resolve(&cfg.folder);
-    let folder_abs_str = folder_abs
-        .to_str()
-        .expect("embark: non-UTF-8 folder path")
-        .to_string();
+    let folder_abs_str = build::path_str(&folder_abs, folder_span)?.to_string();
 
     // Walk the folder, collect (relative_path, absolute_path), apply globs.
     let mut files = Vec::new();
-    walk(&folder_abs, &folder_abs, &cfg, &mut files);
+    walk(&folder_abs, &folder_abs, &cfg, &mut files)?;
     files.sort();
 
     // One build-time key per derive when encrypting.
@@ -39,7 +40,7 @@ pub fn expand(input: syn::DeriveInput) -> proc_macro2::TokenStream {
     let mut manifest_items = Vec::new();
     let mut tracked = Vec::new();
     for (rel, abs) in &files {
-        let data = build::read(abs);
+        let data = build::read(abs, &shown_child(&cfg, rel), folder_span)?;
         let entry = if let Some(key) = key_material {
             crypt::seal_with_key(&data, cfg.codec, cfg.cipher, key)
         } else if cfg.auto {
@@ -51,7 +52,7 @@ pub fn expand(input: syn::DeriveInput) -> proc_macro2::TokenStream {
         manifest_items.push(quote! {
             ::embark::Manifest { path: #rel, entry: #lit }
         });
-        tracked.push(build::track_file(abs));
+        tracked.push(build::track_file(abs, folder_span)?);
     }
 
     // get()/iter() bodies. Dev-mode overrides get() in debug builds.
@@ -88,7 +89,7 @@ pub fn expand(input: syn::DeriveInput) -> proc_macro2::TokenStream {
         (quote!(), quote!())
     };
 
-    quote! {
+    Ok(quote! {
         const _: () = {
             #(#tracked)*
             static MANIFEST: &[::embark::Manifest] = &[ #(#manifest_items),* ];
@@ -104,29 +105,84 @@ pub fn expand(input: syn::DeriveInput) -> proc_macro2::TokenStream {
                 }
             }
         };
+    })
+}
+
+/// The failure form of [`expand`]: the real diagnostic, plus an `Embed` impl
+/// that does nothing.
+///
+/// Without the stub, every downstream `Assets::get(..)` raises its own
+/// "no function or associated item named `get`" on top of the actual error,
+/// burying it. The stub makes those calls resolve, leaving the message that
+/// explains what to fix as the only one reported.
+pub fn error_with_stub(input: &syn::DeriveInput, err: &syn::Error) -> proc_macro2::TokenStream {
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    let diagnostic = err.to_compile_error();
+    quote! {
+        #diagnostic
+        const _: () = {
+            impl #impl_generics ::embark::Embed for #name #ty_generics #where_clause {
+                fn get(_path: &str) -> ::core::option::Option<::embark::EmbeddedFile> {
+                    ::core::option::Option::None
+                }
+                fn iter() -> ::embark::Entries {
+                    ::embark::entries(&[])
+                }
+            }
+        };
     }
 }
 
-fn walk(root: &Path, dir: &Path, cfg: &Config, out: &mut Vec<(String, std::path::PathBuf)>) {
-    let rd = match std::fs::read_dir(dir) {
-        Ok(rd) => rd,
-        Err(_) => return,
-    };
+fn walk(
+    root: &Path,
+    dir: &Path,
+    cfg: &Config,
+    out: &mut Vec<(String, std::path::PathBuf)>,
+) -> syn::Result<()> {
+    // A directory that cannot be listed would otherwise drop every file under
+    // it from the manifest without a word, so report it instead.
+    let rd = std::fs::read_dir(dir).map_err(|e| {
+        let shown = if dir == root {
+            cfg.folder.value()
+        } else {
+            shown_child(cfg, &relative_to(root, dir))
+        };
+        let msg = if e.kind() == std::io::ErrorKind::NotFound {
+            format!("embark: folder not found: `{shown}` (resolved relative to CARGO_MANIFEST_DIR)")
+        } else {
+            format!("embark: cannot read folder `{shown}`: {e}")
+        };
+        syn::Error::new(cfg.folder.span(), msg)
+    })?;
     for entry in rd.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            walk(root, &path, cfg, out);
+            walk(root, &path, cfg, out)?;
         } else {
-            let rel = path
-                .strip_prefix(root)
-                .unwrap()
-                .to_string_lossy()
-                .replace('\\', "/");
+            let rel = relative_to(root, &path);
             if included(cfg, &rel) {
                 out.push((rel, path));
             }
         }
     }
+    Ok(())
+}
+
+/// How a path under the embedded folder is named in diagnostics: as the user
+/// wrote the folder, plus the entry's path relative to it. The resolved
+/// absolute path is deliberately left out -- see `build::read`.
+fn shown_child(cfg: &Config, rel: &str) -> String {
+    format!("{}/{rel}", cfg.folder.value().trim_end_matches('/'))
+}
+
+/// `path` relative to `root`, with `/` separators on every platform. Every
+/// caller passes a `path` produced by walking `root`, so the prefix is there.
+fn relative_to(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 fn included(cfg: &Config, rel: &str) -> bool {
@@ -139,8 +195,8 @@ fn included(cfg: &Config, rel: &str) -> bool {
     cfg.include.iter().any(|p| glob::matches(p, rel))
 }
 
-fn parse_config(input: &syn::DeriveInput) -> Config {
-    let mut folder: Option<String> = None;
+fn parse_config(input: &syn::DeriveInput) -> syn::Result<Config> {
+    let mut folder: Option<LitStr> = None;
     let mut codec = CodecId::Deflate;
     let mut cipher = CryptoId::ChaCha20Poly1305;
     let mut auto = false;
@@ -155,8 +211,7 @@ fn parse_config(input: &syn::DeriveInput) -> Config {
         }
         attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("folder") {
-                let s: syn::LitStr = meta.value()?.parse()?;
-                folder = Some(s.value());
+                folder = Some(meta.value()?.parse()?);
             } else if meta.path.is_ident("codec") {
                 let s: syn::LitStr = meta.value()?.parse()?;
                 match s.value().as_str() {
@@ -197,12 +252,18 @@ fn parse_config(input: &syn::DeriveInput) -> Config {
                 return Err(meta.error("unknown `#[embark(...)]` attribute"));
             }
             Ok(())
-        })
-        .expect("embark: invalid #[embark(...)] attribute");
+        })?;
     }
 
-    Config {
-        folder: folder.expect("embark: #[derive(Embed)] requires #[embark(folder = \"...\")]"),
+    let folder = folder.ok_or_else(|| {
+        syn::Error::new(
+            input.ident.span(),
+            "#[derive(Embed)] requires #[embark(folder = \"...\")]",
+        )
+    })?;
+
+    Ok(Config {
+        folder,
         codec,
         cipher,
         auto,
@@ -210,5 +271,5 @@ fn parse_config(input: &syn::DeriveInput) -> Config {
         dev,
         include,
         exclude,
-    }
+    })
 }

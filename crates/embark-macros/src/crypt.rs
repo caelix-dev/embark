@@ -13,7 +13,15 @@ pub(crate) struct Sealed {
     pub key: Option<[u8; 32]>,
 }
 
-pub(crate) fn seal_file(data: &[u8], codec: CodecId, crypto: CryptoId, mode: KeyMode) -> Sealed {
+/// Seals `data`. Fails only in [`KeyMode::Runtime`], when `EMBARK_KEY` is
+/// missing or malformed; the message is returned for the caller to span at
+/// the `key = runtime` argument that asked for it.
+pub(crate) fn seal_file(
+    data: &[u8],
+    codec: CodecId,
+    crypto: CryptoId,
+    mode: KeyMode,
+) -> Result<Sealed, String> {
     // Compress first (never grow), then encrypt the compressed payload.
     let compressed = embark_codec::compress(codec, data);
     let (codec, compressed) = if compressed.len() < data.len() {
@@ -28,7 +36,7 @@ pub(crate) fn seal_file(data: &[u8], codec: CodecId, crypto: CryptoId, mode: Key
             (key, nonce, Some(key))
         }
         KeyMode::Runtime => {
-            let key = env_key();
+            let key = env_key()?;
             let (_, nonce) = gen_key_nonce();
             (key, nonce, None)
         }
@@ -44,28 +52,32 @@ pub(crate) fn seal_file(data: &[u8], codec: CodecId, crypto: CryptoId, mode: Key
         Some((nonce, tag)),
         &ct,
     );
-    Sealed {
+    Ok(Sealed {
         entry,
         key: embedded_key,
-    }
+    })
 }
 
-fn env_key() -> [u8; 32] {
-    let hex = std::env::var("EMBARK_KEY").expect(
-        "embark: key = runtime requires the EMBARK_KEY env var (64 hex chars) at build time",
-    );
-    let hex = hex.trim();
-    assert_eq!(
-        hex.len(),
-        64,
-        "embark: EMBARK_KEY must be 64 hex chars (32 bytes)"
-    );
+fn env_key() -> Result<[u8; 32], String> {
+    let raw = std::env::var("EMBARK_KEY").map_err(|_| {
+        "embark: `key = runtime` needs the EMBARK_KEY environment variable (64 hex characters, a 32-byte key) set at build time"
+            .to_string()
+    })?;
+    let hex = raw.trim();
+    // Checking for ASCII hex up front also keeps the byte-pair slicing below
+    // off a multi-byte char boundary.
+    if hex.len() != 64 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(format!(
+            "embark: EMBARK_KEY must be exactly 64 hex characters (a 32-byte key), got {} characters",
+            hex.chars().count()
+        ));
+    }
     let mut key = [0u8; 32];
     for (i, b) in key.iter_mut().enumerate() {
         *b = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16)
-            .expect("embark: EMBARK_KEY must be valid hex");
+            .map_err(|e| format!("embark: EMBARK_KEY is not valid hex: {e}"))?;
     }
-    key
+    Ok(key)
 }
 
 // Used by derive(Embed) with #[embark(encrypt)]: every file in the folder is

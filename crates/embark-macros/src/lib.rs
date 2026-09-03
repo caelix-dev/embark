@@ -54,16 +54,24 @@ use quote::quote;
 #[proc_macro]
 pub fn embed_bytes(input: TokenStream) -> TokenStream {
     let args = syn::parse_macro_input!(input as args::Args);
+    expand_bytes(args)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+fn expand_bytes(args: args::Args) -> syn::Result<proc_macro2::TokenStream> {
+    let span = args.path.span();
+    let shown = args.path.value();
+    let path = build::resolve(&args.path);
     match args.codec {
         None => {
             // Raw mode: zero-cost include_bytes! with an absolute path.
-            let abs = build::resolve(&args.path);
-            let abs = abs.to_str().expect("embark: non-UTF-8 path");
-            quote!(::core::include_bytes!(#abs)).into()
+            build::ensure_readable(&path, &shown, span)?;
+            let abs = build::path_str(&path, span)?;
+            Ok(quote!(::core::include_bytes!(#abs)))
         }
         Some(codec) => {
-            let path = build::resolve(&args.path);
-            let data = build::read(&path);
+            let data = build::read(&path, &shown, span)?;
             let entry = match codec {
                 args::CodecArg::Auto => build::build_entry_best(&data),
                 args::CodecArg::Store => build::build_entry(CodecId::Store, &data),
@@ -74,14 +82,13 @@ pub fn embed_bytes(input: TokenStream) -> TokenStream {
                 args::CodecArg::Lzma => build::build_entry(CodecId::Lzma, &data),
             };
             let lit = build::bytes_literal(&entry);
-            let track = build::track_file(&path);
-            quote! {
+            let track = build::track_file(&path, span)?;
+            Ok(quote! {
                 {
                     #track
                     ::embark::EmbeddedBytes::from_entry(#lit)
                 }
-            }
-            .into()
+            })
         }
     }
 }
@@ -144,19 +151,29 @@ pub fn embed_bytes(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn embed_crypt(input: TokenStream) -> TokenStream {
     let parsed = syn::parse_macro_input!(input as crypt_args::CryptArgs);
+    expand_crypt(parsed)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+fn expand_crypt(parsed: crypt_args::CryptArgs) -> syn::Result<proc_macro2::TokenStream> {
+    let span = parsed.path.span();
+    let shown = parsed.path.value();
     let path = build::resolve(&parsed.path);
-    let data = build::read(&path);
-    let track = build::track_file(&path);
+    let data = build::read(&path, &shown, span)?;
+    let track = build::track_file(&path, span)?;
     let codec = parsed.codec_id();
     let crypto = parsed.crypto_id();
-    let mode = if parsed.runtime_key {
-        crypt::KeyMode::Runtime
-    } else {
-        crypt::KeyMode::BuildTime
+    let (mode, key_span) = match parsed.runtime_key {
+        Some(key_span) => (crypt::KeyMode::Runtime, key_span),
+        None => (crypt::KeyMode::BuildTime, span),
     };
-    let sealed = crypt::seal_file(&data, codec, crypto, mode);
+    // The only failure here is a missing or malformed EMBARK_KEY, which
+    // `key = runtime` is what asked for -- so point the caret there.
+    let sealed = crypt::seal_file(&data, codec, crypto, mode)
+        .map_err(|msg| syn::Error::new(key_span, msg))?;
     let entry_lit = build::bytes_literal(&sealed.entry);
-    match sealed.key {
+    Ok(match sealed.key {
         Some(key) => {
             // Emit a per-build-randomized key-reconstruction fn and hand its
             // pointer to `with_embedded_key`. The whole thing is a block
@@ -170,16 +187,14 @@ pub fn embed_crypt(input: TokenStream) -> TokenStream {
                     ::embark::EncryptedFile::with_embedded_key(#entry_lit, #recon_name)
                 }
             }
-            .into()
         }
         None => quote! {
             {
                 #track
                 ::embark::EncryptedFile::with_runtime_key(#entry_lit)
             }
-        }
-        .into(),
-    }
+        },
+    })
 }
 
 /// Derives [`Embed`](https://docs.rs/embark/*/embark/trait.Embed.html) for
@@ -255,5 +270,7 @@ pub fn embed_crypt(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(Embed, attributes(embark))]
 pub fn derive_embed(input: TokenStream) -> TokenStream {
     let parsed = syn::parse_macro_input!(input as syn::DeriveInput);
-    derive::expand(parsed).into()
+    derive::expand(&parsed)
+        .unwrap_or_else(|e| derive::error_with_stub(&parsed, &e))
+        .into()
 }

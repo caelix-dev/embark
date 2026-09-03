@@ -1,4 +1,5 @@
 use embark_format::{CodecId, CryptoId};
+use proc_macro2::Span;
 use syn::parse::{Parse, ParseStream};
 use syn::{LitStr, Token};
 
@@ -13,10 +14,13 @@ pub enum CipherArg {
 /// any order. Modeled on `args::Args`, with the addition of the `cipher`
 /// and `key = runtime` options.
 pub struct CryptArgs {
-    pub path: String,
+    // Kept as the literal, not its value, so a failure to read the file is
+    // spanned at the path the user wrote. Same for `runtime_key`: it carries
+    // the span of `runtime`, which a bad `EMBARK_KEY` is reported at.
+    pub path: LitStr,
     pub codec: Option<crate::args::CodecArg>,
     pub cipher: Option<CipherArg>,
-    pub runtime_key: bool,
+    pub runtime_key: Option<Span>,
 }
 
 impl CryptArgs {
@@ -53,7 +57,7 @@ impl Parse for CryptArgs {
         let path: LitStr = input.parse()?;
         let mut codec = None;
         let mut cipher = None;
-        let mut runtime_key = false;
+        let mut runtime_key = None;
 
         while input.peek(Token![,]) {
             let _: Token![,] = input.parse()?;
@@ -101,7 +105,7 @@ impl Parse for CryptArgs {
                 if val != "runtime" {
                     return Err(syn::Error::new(val.span(), "expected `runtime`"));
                 }
-                runtime_key = true;
+                runtime_key = Some(val.span());
             } else {
                 return Err(syn::Error::new(
                     key.span(),
@@ -111,7 +115,7 @@ impl Parse for CryptArgs {
         }
 
         Ok(CryptArgs {
-            path: path.value(),
+            path,
             codec,
             cipher,
             runtime_key,
