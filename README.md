@@ -65,7 +65,8 @@ static CONFIG: embark::EncryptedFile =
     embark::embed_crypt!("assets/config.bin", cipher = aes, codec = zstd);
 
 // Runtime key — no key compiled in; you supply it at run time. Note the
-// EncryptedFile<RuntimeKey> type annotation.
+// EncryptedFile<RuntimeKey> type annotation. Building this needs
+// EMBARK_KEY=<64 hex chars> in the environment; see below.
 static LICENSE: embark::EncryptedFile<embark::RuntimeKey> =
     embark::embed_crypt!("assets/license.key", key = runtime);
 
@@ -87,6 +88,19 @@ fn main() {
   the wrong key fails to authenticate. Omitted by default, which embeds a
   build-time key and gives you the infallible `decrypt()` / `decrypt_str()`
   instead.
+
+  **This mode needs `EMBARK_KEY` set at build time**, as 64 hex characters
+  (a 32-byte key):
+
+  ```sh
+  EMBARK_KEY=$(openssl rand -hex 32) cargo build --release
+  ```
+
+  The macro seals the file with that key while compiling, then throws it
+  away — nothing about it is written into the binary. Keep it: it is the
+  same key you must hand `decrypt_with` at run time, and without it the
+  embedded bytes are unrecoverable. Building without the variable set is a
+  compile error pointing at the `runtime` argument.
 
 Runnable versions of all four patterns live in
 [`crates/embark/examples/`](crates/embark/examples/) — try
@@ -117,6 +131,13 @@ fn main() {
     let key: [u8; 32] = load_key_from_somewhere_else();
     let data = SECRET.decrypt_with(&key).unwrap();
 }
+```
+
+Build it with the key in the environment, and keep that key — it is the one
+`load_key_from_somewhere_else` has to return:
+
+```sh
+EMBARK_KEY=$(openssl rand -hex 32) cargo build --release
 ```
 
 With `key = runtime` the ciphertext is embedded but no key material at all
