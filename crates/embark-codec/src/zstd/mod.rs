@@ -5,8 +5,8 @@
 //! build-time proc macro, while decompression runs in every consumer binary
 //! that reads the asset, so effort spent on ratio is paid for once and
 //! effort spent on decode speed is paid for forever. That is why the encoder
-//! here does its own matching and entropy coding rather than leaning on
-//! `ruzstd`, and why the decoder is left alone.
+//! here is a lazy hash-chain parser with repeat offsets rather than the
+//! single-probe finder `ruzstd` offers, and why the decoder is left alone.
 //!
 //! The encoder emits a single frame with an explicit window of at most
 //! 8 MiB, blocks of at most 128 KiB, raw or run-length literals, and

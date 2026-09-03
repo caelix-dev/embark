@@ -3,7 +3,7 @@
 
 use alloc::vec::Vec;
 
-use super::matcher::Match;
+use super::matcher::{self, Match};
 use super::sequences::{self, Coded, Tables};
 
 /// Largest decompressed size of one block.
@@ -24,8 +24,16 @@ struct Chunk {
 pub(super) fn write_all(out: &mut Vec<u8>, input: &[u8], matches: &[Match]) {
     let chunks = plan(input.len(), matches);
     let tables = Tables::new();
+    let mut repeats = [1usize, 4, 8];
     for (i, chunk) in chunks.iter().enumerate() {
-        write_one(out, input, chunk, &tables, i + 1 == chunks.len());
+        write_one(
+            out,
+            input,
+            chunk,
+            &tables,
+            &mut repeats,
+            i + 1 == chunks.len(),
+        );
     }
 }
 
@@ -80,7 +88,14 @@ fn plan(len: usize, matches: &[Match]) -> Vec<Chunk> {
     chunks
 }
 
-fn write_one(out: &mut Vec<u8>, input: &[u8], chunk: &Chunk, tables: &Tables, last: bool) {
+fn write_one(
+    out: &mut Vec<u8>,
+    input: &[u8],
+    chunk: &Chunk,
+    tables: &Tables,
+    repeats: &mut [usize; 3],
+    last: bool,
+) {
     let raw = &input[chunk.start..chunk.end];
     // One repeated byte costs a single byte as an RLE block, which nothing
     // else can beat, so that case never needs the sequence encoder.
@@ -89,12 +104,15 @@ fn write_one(out: &mut Vec<u8>, input: &[u8], chunk: &Chunk, tables: &Tables, la
         out.push(raw[0]);
         return;
     }
-    let body = compressed_body(input, chunk, tables);
+    let mut trial = *repeats;
+    let body = compressed_body(input, chunk, tables, &mut trial);
     // A `Compressed_Block` is only legal when it is strictly smaller than what
     // it stands for, which is also the only case in which it is worth using.
+    // Blocks that are not compressed leave the offset history alone.
     if body.len() < raw.len() {
         write_header(out, body.len(), COMPRESSED, last);
         out.extend_from_slice(&body);
+        *repeats = trial;
     } else {
         write_header(out, raw.len(), RAW, last);
         out.extend_from_slice(raw);
@@ -107,19 +125,23 @@ fn write_header(out: &mut Vec<u8>, size: usize, kind: u8, last: bool) {
 }
 
 /// Build a `Compressed_Block` body: the literals section, then the sequences.
-fn compressed_body(input: &[u8], chunk: &Chunk, tables: &Tables) -> Vec<u8> {
+fn compressed_body(
+    input: &[u8],
+    chunk: &Chunk,
+    tables: &Tables,
+    repeats: &mut [usize; 3],
+) -> Vec<u8> {
     let mut literals = Vec::new();
     let mut coded = Vec::with_capacity(chunk.seqs.len());
     let mut at = chunk.start;
     for seq in &chunk.seqs {
         literals.extend_from_slice(&input[at..at + seq.literal_len]);
         at += seq.literal_len + seq.match_len;
-        // Offset values 1 to 3 name repeat offsets, so a literal distance is
-        // written three higher (RFC 8478, section 3.1.1.3.2.1.1).
+        let offset = matcher::encode_offset(repeats, seq.offset, seq.literal_len);
         coded.push(Coded::new(
             seq.literal_len as u32,
             seq.match_len as u32,
-            seq.offset as u32 + 3,
+            offset,
         ));
     }
     literals.extend_from_slice(&input[at..chunk.end]);
