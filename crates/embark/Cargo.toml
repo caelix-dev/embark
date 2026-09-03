@@ -16,6 +16,7 @@ embark-macros = { workspace = true, optional = true }
 [dev-dependencies]
 embark-format = { workspace = true, features = ["enc"] }
 embark-codec = { workspace = true, features = ["enc"] }
+embark-crypt = { workspace = true, features = ["enc"] }
 
 [features]
 default = ["std", "derive", "deflate"]
