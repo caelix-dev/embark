@@ -176,7 +176,7 @@ impl Snappy {
     }
 }
 
-/// The Zstd codec (via `ruzstd`).
+/// The Zstd codec: a self-written encoder, decoding via `ruzstd`.
 #[cfg(feature = "zstd")]
 #[derive(Debug)]
 pub struct Zstd;
