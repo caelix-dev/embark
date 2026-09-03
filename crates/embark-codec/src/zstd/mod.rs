@@ -4,20 +4,30 @@
 //! The asymmetry is deliberate. Compression runs once per asset inside the
 //! build-time proc macro, while decompression runs in every consumer binary
 //! that reads the asset, so effort spent on ratio is paid for once and
-//! effort spent on decode speed is paid for forever. The decoder is left
-//! alone for that reason.
+//! effort spent on decode speed is paid for forever. That is why the encoder
+//! here does its own matching and entropy coding rather than leaning on
+//! `ruzstd`, and why the decoder is left alone.
 //!
-//! So far the encoder only frames: one frame with an explicit window of at
-//! most 8 MiB, then blocks of at most 128 KiB stored raw, or as a run length
-//! when a whole block is one repeated byte. That is the shell the entropy
-//! coding drops into.
+//! The encoder emits a single frame with an explicit window of at most
+//! 8 MiB, blocks of at most 128 KiB, raw or run-length literals, and
+//! sequences entropy-coded against the format's predefined FSE
+//! distributions. Blocks that would not shrink are stored instead, so an
+//! incompressible input grows by only three bytes per block.
 
 extern crate alloc;
 
 #[cfg(feature = "enc")]
+mod bitstream;
+#[cfg(feature = "enc")]
 mod block;
 #[cfg(feature = "enc")]
 mod frame;
+#[cfg(feature = "enc")]
+mod fse;
+#[cfg(feature = "enc")]
+mod matcher;
+#[cfg(feature = "enc")]
+mod sequences;
 
 #[cfg(any(feature = "enc", feature = "dec"))]
 use alloc::vec::Vec;
@@ -52,6 +62,8 @@ pub(crate) fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error
 
 #[cfg(all(test, feature = "enc", feature = "dec"))]
 mod tests {
+    use alloc::string::String;
+
     use super::*;
 
     #[test]
@@ -71,6 +83,7 @@ mod tests {
     fn roundtrip_repetitive() {
         let data = b"ababababababababababababababababab".repeat(50);
         let c = compress(&data);
+        assert!(c.len() < data.len(), "repetitive data should shrink");
         assert_eq!(decompress(&c, data.len()).unwrap(), data);
     }
 
@@ -129,6 +142,23 @@ mod tests {
         let back = decompress(&packed, data.len()).expect("our own decoder must accept the frame");
         assert_eq!(back, data);
         packed
+    }
+
+    #[test]
+    fn roundtrip_json_like() {
+        let mut data = String::from("[");
+        for i in 0..2000 {
+            data.push_str("{\"id\":");
+            data.push_str(&alloc::format!("{i}"));
+            data.push_str(",\"name\":\"item\",\"tags\":[\"a\",\"b\"],\"ok\":true},");
+        }
+        data.push(']');
+        let bytes = data.into_bytes();
+        let packed = roundtrip(&bytes);
+        assert!(
+            packed.len() * 8 < bytes.len(),
+            "structured text should shrink hard"
+        );
     }
 
     #[test]
