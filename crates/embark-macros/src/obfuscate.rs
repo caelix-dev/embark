@@ -35,7 +35,7 @@ use embark_crypt::gen_key_nonce;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
-/// A small SplitMix64 PRNG, seeded from `embark_crypt::gen_key_nonce` (the
+/// A small `SplitMix64` PRNG, seeded from `embark_crypt::gen_key_nonce` (the
 /// same build-time CSPRNG the key itself is drawn from). Used only to pick
 /// the shape of the obfuscation program; it never touches key material.
 struct Rng {

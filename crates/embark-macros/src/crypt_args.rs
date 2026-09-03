@@ -4,7 +4,7 @@ use syn::parse::{Parse, ParseStream};
 use syn::{LitStr, Token};
 
 /// The `cipher = ...` argument: which AEAD cipher to seal with.
-pub enum CipherArg {
+pub(crate) enum CipherArg {
     ChaCha,
     Aes,
 }
@@ -13,7 +13,7 @@ pub enum CipherArg {
 /// `, codec = <ident>`, `, cipher = <ident>`, and/or `, key = runtime`, in
 /// any order. Modeled on `args::Args`, with the addition of the `cipher`
 /// and `key = runtime` options.
-pub struct CryptArgs {
+pub(crate) struct CryptArgs {
     // Kept as the literal, not its value, so a failure to read the file is
     // spanned at the path the user wrote. Same for `runtime_key`: it carries
     // the span of `runtime`, which a bad `EMBARK_KEY` is reported at.
@@ -30,7 +30,7 @@ impl CryptArgs {
     /// codec-selection pass `embed_bytes!` does for its `auto` mode -- the
     /// entry is encrypted either way, so the size delta between codecs
     /// matters less here.
-    pub fn codec_id(&self) -> CodecId {
+    pub(crate) fn codec_id(&self) -> CodecId {
         match self.codec {
             None | Some(crate::args::CodecArg::Auto) => CodecId::Deflate,
             Some(crate::args::CodecArg::Store) => CodecId::Store,
@@ -44,7 +44,7 @@ impl CryptArgs {
 
     /// The AEAD cipher to seal with. Defaults to `ChaCha20Poly1305` when
     /// unspecified.
-    pub fn crypto_id(&self) -> CryptoId {
+    pub(crate) fn crypto_id(&self) -> CryptoId {
         match self.cipher {
             None | Some(CipherArg::ChaCha) => CryptoId::ChaCha20Poly1305,
             Some(CipherArg::Aes) => CryptoId::Aes256Gcm,
@@ -53,7 +53,7 @@ impl CryptArgs {
 }
 
 impl Parse for CryptArgs {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let path: LitStr = input.parse()?;
         let mut codec = None;
         let mut cipher = None;

@@ -13,6 +13,18 @@ pub(crate) struct Sealed {
     pub key: Option<[u8; 32]>,
 }
 
+// Hand-written rather than derived: `key` is live key material, and a derived
+// `Debug` would print it into the build log of anyone who ever formats this
+// while debugging the macro.
+impl std::fmt::Debug for Sealed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Sealed")
+            .field("entry_len", &self.entry.len())
+            .field("key", &self.key.map(|_| "[redacted]"))
+            .finish()
+    }
+}
+
 /// Seals `data`. Fails only in [`KeyMode::Runtime`], when `EMBARK_KEY` is
 /// missing or malformed; the message is returned for the caller to span at
 /// the `key = runtime` argument that asked for it.

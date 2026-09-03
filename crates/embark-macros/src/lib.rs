@@ -2,7 +2,6 @@
 //! [`Embed`](macro@Embed) derive. Re-exported from the `embark` crate under
 //! its `derive` feature; use them via `embark::embed_bytes!` etc. rather
 //! than depending on this crate directly.
-#![forbid(unsafe_code)]
 
 mod args;
 mod build;

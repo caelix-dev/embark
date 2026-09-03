@@ -1,4 +1,4 @@
-pub fn matches(pattern: &str, name: &str) -> bool {
+pub(crate) fn matches(pattern: &str, name: &str) -> bool {
     fn rec(p: &[u8], n: &[u8]) -> bool {
         match p.first() {
             None => n.is_empty(),

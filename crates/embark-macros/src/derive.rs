@@ -18,7 +18,7 @@ struct Config {
     exclude: Vec<String>,
 }
 
-pub fn expand(input: &syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
+pub(crate) fn expand(input: &syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     check_shape(input)?;
     let name = &input.ident;
     let cfg = parse_config(input)?;
@@ -117,7 +117,10 @@ pub fn expand(input: &syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream>
 /// "no function or associated item named `get`" on top of the actual error,
 /// burying it. The stub makes those calls resolve, leaving the message that
 /// explains what to fix as the only one reported.
-pub fn error_with_stub(input: &syn::DeriveInput, err: &syn::Error) -> proc_macro2::TokenStream {
+pub(crate) fn error_with_stub(
+    input: &syn::DeriveInput,
+    err: &syn::Error,
+) -> proc_macro2::TokenStream {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let diagnostic = err.to_compile_error();
