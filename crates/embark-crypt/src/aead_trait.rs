@@ -1,29 +1,29 @@
-//! The [`Aead`] trait abstracts over AEAD ciphers.
-//!
-//! [`ChaCha20Poly1305`] is the built-in cipher, implementing [`Aead`] on top
-//! of the same code the derive macros and the runtime decrypt path use —
-//! this is a manual, direct-call entry point into that machinery, not a new
-//! implementation. Implement `Aead` for your own cipher to reuse
-//! embark-crypt's function signatures manually. The on-binary `CryptoId`
-//! and the `embark_crypt` macro/runtime pipeline always use the built-in
-//! cipher; a proc-macro cannot call into a user's own cipher implementation
-//! at compile time, so a custom `Aead` impl is usable only through this
-//! manual trait, never through the derive/macro path.
+//! Naming and dispatch for the two built-in AEAD ciphers.
 
 extern crate alloc;
 use alloc::vec::Vec;
 #[cfg(feature = "dec")]
 use embark_format::Error;
 
-/// An AEAD (authenticated encryption with associated data) cipher, with no
-/// associated data (embark never needs any).
+mod sealed {
+    pub trait Sealed {}
+}
+
+/// An AEAD (authenticated encryption with associated data) cipher, always
+/// used with empty associated data — embark never needs any.
 ///
-/// [`ChaCha20Poly1305`] is the built-in implementation. Implement `Aead` for
-/// your own cipher to use embark-crypt's function signatures with a custom
-/// cipher — this only works for manual, direct calls; the on-binary format
-/// and the `embark_crypt`/`#[embark(encrypt)]` macro path always use the
-/// built-in cipher.
-pub trait Aead {
+/// This trait is **sealed**: [`ChaCha20Poly1305`] and, behind the `aes`
+/// feature, `Aes256Gcm` are its only implementations, and downstream crates
+/// cannot add another. It exists so the built-in ciphers can be named as
+/// types and dispatched over uniformly, not as an extension point.
+///
+/// A third-party cipher would be unusable here even if the trait were open.
+/// An embedded entry names its cipher with a one-byte `CryptoId` in its
+/// header, and that set of ids is closed, so a custom cipher has no id to
+/// write and nothing could produce an entry it would later be asked to open.
+/// The proc macros pick from the same ids at compile time and have no way to
+/// call into user code.
+pub trait Aead: sealed::Sealed {
     /// Encrypt `plain` in place, returning the ciphertext and detached tag.
     #[cfg(feature = "enc")]
     fn seal(&self, key: &[u8; 32], nonce: &[u8; 12], plain: &[u8]) -> (Vec<u8>, [u8; 16]);
@@ -41,6 +41,8 @@ pub trait Aead {
 
 /// The built-in ChaCha20-Poly1305 AEAD cipher.
 pub struct ChaCha20Poly1305;
+
+impl sealed::Sealed for ChaCha20Poly1305 {}
 
 impl Aead for ChaCha20Poly1305 {
     #[cfg(feature = "enc")]
@@ -64,6 +66,9 @@ impl Aead for ChaCha20Poly1305 {
 /// (32B), nonce (12B), and tag (16B) shape as [`ChaCha20Poly1305`].
 #[cfg(feature = "aes")]
 pub struct Aes256Gcm;
+
+#[cfg(feature = "aes")]
+impl sealed::Sealed for Aes256Gcm {}
 
 #[cfg(feature = "aes")]
 impl Aead for Aes256Gcm {
