@@ -34,6 +34,11 @@ pub(crate) fn decode(entry: &'static [u8], key: Option<[u8; 32]>) -> Result<Cow<
                 return Err(Error::UnknownCrypto(header.crypto.as_u8()));
             }
         }
+        // `CryptoId` is `#[non_exhaustive]`. A cipher added to the format
+        // after this crate was compiled parses fine in the header but is one
+        // this build cannot open, so say so; treating it as plaintext would
+        // hand the caller ciphertext and call it the file.
+        _ => return Err(Error::UnknownCrypto(header.crypto.as_u8())),
     };
 
     // Decompression stage. For Store the plaintext is already the final bytes,

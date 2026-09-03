@@ -8,6 +8,12 @@ use crate::{Error, Result};
 /// by `embark-codec`'s cargo features: an id naming a codec that was not
 /// compiled in parses fine here and fails at decompression time with
 /// [`Error::UnknownCodec`].
+///
+/// `#[non_exhaustive]`: this list has already grown from two variants to
+/// six and the format has room for ten more, so match it with a wildcard
+/// arm that reports [`Error::UnknownCodec`] rather than one that silently
+/// picks a default.
+#[non_exhaustive]
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CodecId {
@@ -61,6 +67,12 @@ impl CodecId {
 /// [`None`](CryptoId::None) also means the header carries a 12-byte nonce
 /// and a 16-byte authentication tag between the length varint and the
 /// payload; both built-in ciphers share that shape.
+///
+/// `#[non_exhaustive]`: this list has already grown from two variants to
+/// three, so match it with a wildcard arm that reports
+/// [`Error::UnknownCrypto`] rather than one that treats an unrecognized
+/// cipher as no cipher at all.
+#[non_exhaustive]
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CryptoId {

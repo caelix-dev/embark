@@ -15,11 +15,12 @@ use crate::ChaCha20Poly1305;
 ///
 /// # Panics
 ///
-/// Panics if `crypto` does not name a cipher this build can seal with, that
-/// is `CryptoId::None` or, without the `aes` feature, `CryptoId::Aes256Gcm`.
+/// Panics if `crypto` does not name a cipher this build can seal with: that
+/// is `CryptoId::None`, `CryptoId::Aes256Gcm` without the `aes` feature, or
+/// a cipher added to the format since this build was compiled.
 /// The only caller today is `embark-macros`, which always resolves a
 /// `cipher = ...` argument to a supported cipher before calling here, so
-/// either case is a caller bug rather than a runtime condition to recover
+/// any of these is a caller bug rather than a runtime condition to recover
 /// from.
 ///
 /// Also panics if `plain` exceeds the chosen cipher's maximum message
@@ -37,7 +38,6 @@ pub fn seal(
         CryptoId::ChaCha20Poly1305 => ChaCha20Poly1305.seal(key, nonce, plain),
         #[cfg(feature = "aes")]
         CryptoId::Aes256Gcm => Aes256Gcm.seal(key, nonce, plain),
-        #[allow(unreachable_patterns)]
         other => panic!(
             "embark-crypt: seal requires a real AEAD cipher, got crypto id {}",
             other.as_u8()
@@ -70,8 +70,8 @@ pub fn open(
         #[cfg(feature = "aes")]
         CryptoId::Aes256Gcm => Aes256Gcm.open(key, nonce, ct, tag),
         // Reached for `CryptoId::None` (never sealed, so never a valid
-        // `open` target) and for `Aes256Gcm` when the `aes` feature is off.
-        #[allow(unreachable_patterns)]
+        // `open` target), for `Aes256Gcm` when the `aes` feature is off, and
+        // for any cipher `CryptoId` gained after this build was compiled.
         other => Err(Error::UnknownCrypto(other.as_u8())),
     }
 }
