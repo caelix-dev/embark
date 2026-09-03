@@ -49,9 +49,10 @@ pub(crate) fn build_entry_best(data: &[u8]) -> Vec<u8> {
     entry
 }
 
-// Emit a byte slice as a token literal: &[0u8, 1u8, ...].
-pub(crate) fn bytes_literal(bytes: &[u8]) -> proc_macro2::TokenStream {
-    use quote::quote;
-    let elems = bytes.iter().map(|b| quote!(#b));
-    quote!(&[#(#elems),*])
+// Emit a byte slice as a single byte-string literal. One token instead of one
+// per byte keeps rustc's parsing and const-evaluation cost flat in asset size.
+// The result is typed `&'static [u8; N]`, so call sites relying on a
+// `&'static [u8]` need an unsizing coercion site.
+pub(crate) fn bytes_literal(bytes: &[u8]) -> proc_macro2::Literal {
+    proc_macro2::Literal::byte_string(bytes)
 }
