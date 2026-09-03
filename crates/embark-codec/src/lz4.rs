@@ -1,4 +1,5 @@
 extern crate alloc;
+#[cfg(any(feature = "enc", feature = "dec"))]
 use alloc::vec::Vec;
 #[cfg(feature = "dec")]
 use embark_format::Error;
