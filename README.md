@@ -247,21 +247,28 @@ rebuild with that override in place and is usually worth it. Past roughly
 16 MB per asset, reach for `deflate`, `lz4` or `snappy` instead, or accept
 a slow build.
 
-Only `codec = auto_small` runs the LZMA encoder; the other two policies stop
-short of it and are cheap by comparison. Encoding a 32 MB asset with each,
-optimized:
+Two of the three `auto` policies now run an encoder that searches hard:
+`auto_small` runs LZMA and `auto` runs Zstd. Only `auto_fast` stops short of
+both. What that costs depends far more on the asset than on the policy.
+Encoding 32 MB with each, optimized:
 
-| policy | encode | payload |
-|---|---:|---:|
-| `auto_fast` | 0.24 s | 18,109,028 B |
-| `auto` | 4.59 s | 12,522,969 B |
-| `auto_small` | 20.72 s | 2,508,282 B |
+| policy | redundant asset | poorly compressible asset |
+|---|---|---|
+| `auto_fast` | 0.0 s, LZ4 131,637 B | 0.2 s, Store 33,554,432 B |
+| `auto` | 4.1 s, Zstd 3,381 B | 180 s, Zstd 24,339,162 B |
+| `auto_small` | 6.7 s, Zstd 3,381 B | 226 s, LZMA 22,417,485 B |
 
-That asset is unusually redundant, which is why LZMA is five times smaller
-rather than the ~20% it manages on ordinary files. It is the shape of asset
-worth naming `auto_small` for explicitly: the tiers are fixed so that the
-codec a build picks stays predictable, which means `auto` will not go
-looking for a win like that on its own.
+The left column is an asset that compresses almost to nothing, so the search
+finds its matches immediately. The right one barely compresses, so both
+encoders search the whole window and find little — the worst case for build
+time, and the case where compression buys you least. `auto_fast` gives up on
+it in a fifth of a second and stores it verbatim, which for that asset is the
+honest answer.
+
+So the rule of thumb is about the asset, not the policy: a large asset that
+does not compress well is the one to keep away from `auto` and `auto_small`.
+Name `deflate`, `lz4` or `snappy` for it explicitly, or accept the build cost
+once and rely on the rebuild note above.
 
 ## Similar projects
 

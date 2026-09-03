@@ -13,13 +13,13 @@ use embark_format::CodecId;
 /// consumer's shipped binary on every access. The two are not
 /// interchangeable costs, so the tiers cut the codec set by decode speed and
 /// each keeps the smallest output *within its own candidates*. Measured on a
-/// 468 KiB executable, with the decoders this crate actually ships:
+/// 125,976-byte executable, with the decoders this crate actually ships:
 ///
 /// | tier | wins with | payload | decode |
 /// |---|---|---:|---:|
-/// | [`Fast`](AutoTier::Fast) | LZ4 | 312,340 B | 1,744 MB/s |
-/// | [`Balanced`](AutoTier::Balanced) | DEFLATE | 228,157 B | 305 MB/s |
-/// | [`Small`](AutoTier::Small) | LZMA | 191,493 B | 45 MB/s |
+/// | [`Fast`](AutoTier::Fast) | LZ4 | 81,798 B | 2,775 MB/s |
+/// | [`Balanced`](AutoTier::Balanced) | Zstd | 56,140 B | 112 MB/s |
+/// | [`Small`](AutoTier::Small) | LZMA | 52,512 B | 41 MB/s |
 ///
 /// The tiers are nested, so a wider one never picks a *larger* payload than
 /// a narrower one. They are fixed membership rather than a cost function:
@@ -33,21 +33,31 @@ use embark_format::CodecId;
 pub enum AutoTier {
     /// `Store`, `Lz4`, `Snappy` — the codecs that decode at GB/s.
     ///
-    /// Selected by `codec = auto_fast`. Also the cheapest to *encode*: this
-    /// tier never runs the LZMA encoder, which costs minutes on a large
-    /// asset.
+    /// Selected by `codec = auto_fast`. Also by far the cheapest to
+    /// *encode*: it runs neither the LZMA nor the Zstd encoder, both of
+    /// which search hard enough to cost minutes on a large, poorly
+    /// compressible asset. Measured on 32 MiB of such data: this tier took
+    /// 0.2 s where [`Balanced`](AutoTier::Balanced) took 180 s.
     Fast,
     /// [`Fast`](AutoTier::Fast) plus `Deflate` and `Zstd`.
     ///
     /// Selected by `codec = auto`, and the balance point the `auto` family
-    /// is named for: about a quarter off the payload `Fast` picks, and
-    /// still read back nearly seven times quicker than LZMA's.
+    /// is named for: roughly a third off the payload `Fast` picks, and
+    /// still read back around three times quicker than LZMA's.
+    ///
+    /// The balance is in *decode* speed, which the consumer's binary pays on
+    /// every access. It is not cheap to encode: Zstd parses each block by
+    /// price over several passes, so a large asset costs this tier minutes
+    /// at build time. See the README's note on build times.
     Balanced,
     /// [`Balanced`](AutoTier::Balanced) plus `Lzma` — every compressing
     /// codec there is.
     ///
     /// Selected by `codec = auto_small`. The smallest binary available, at
-    /// the slowest decode and by far the slowest build.
+    /// the slowest decode. Its build cost is close to
+    /// [`Balanced`](AutoTier::Balanced)'s rather than far above it, since
+    /// both tiers run a codec that searches hard: 226 s against 180 s on
+    /// the same 32 MiB asset.
     Small,
 }
 
