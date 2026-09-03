@@ -38,3 +38,6 @@ lz4 = ["dep:lz4_flex"]
 snappy = []
 zstd = ["dep:ruzstd"]
 lzma = []   # Phase 3
+
+[lints]
+workspace = true

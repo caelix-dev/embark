@@ -42,3 +42,6 @@ lzma = ["embark-codec/lzma"]
 # crate via `embark-macros?/aes`, so `cipher = aes` is only accepted when
 # `embark` itself has the AES-256-GCM decoder compiled in.
 aes = ["embark-crypt/aes"]
+
+[lints]
+workspace = true

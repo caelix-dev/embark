@@ -1,1 +1,4 @@
-# intentionally empty; lint levels are set via CLI (-D warnings)
+# Intentionally empty. Lint levels live in the root Cargo.toml's
+# `[workspace.lints]` table, and clippy already reads the MSRV from
+# `workspace.package.rust-version` (1.87) -- repeating it here would only
+# create a second place to forget when that version moves.

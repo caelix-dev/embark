@@ -23,3 +23,6 @@ std = ["alloc"]
 alloc = []
 enc = ["alloc"]
 dec = ["alloc"]
+
+[lints]
+workspace = true

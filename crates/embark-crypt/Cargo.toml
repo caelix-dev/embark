@@ -36,3 +36,6 @@ enc = ["alloc", "embark-format/enc", "std", "dep:getrandom"]
 dec = ["alloc", "embark-format/dec"]
 std = []
 aes = ["dep:aes-gcm", "dep:aes"]
+
+[lints]
+workspace = true

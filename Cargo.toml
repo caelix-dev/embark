@@ -16,3 +16,32 @@ embark-format = { version = "0.1.0", path = "crates/embark-format", default-feat
 embark-codec = { version = "0.1.0", path = "crates/embark-codec", default-features = false }
 embark-crypt = { version = "0.1.0", path = "crates/embark-crypt", default-features = false }
 embark-macros = { version = "0.1.0", path = "crates/embark-macros" }
+
+# Lint policy for every crate in the workspace; each opts in with
+# `[lints] workspace = true`. CI runs clippy with `-D warnings`, so anything
+# listed here is an error there.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+# The four library crates all publish to docs.rs, so their public surface has
+# to be documented, printable, and actually reachable from outside.
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+# Two members of `rust_2018_idioms`, named individually rather than taking
+# the group. Of the other three, `bare_trait_objects` and
+# `ellipsis_inclusive_range_patterns` are already hard errors under edition
+# 2024, and `unused_extern_crates` fires on correct code here: a `no_std +
+# alloc` module needs its own `extern crate alloc`, and whether any one of
+# them is "used" depends on which codec and enc/dec features are on.
+elided_lifetimes_in_paths = "warn"
+explicit_outlives_requirements = "warn"
+
+[workspace.lints.clippy]
+# Documentation lints only. The wider `clippy::pedantic` group is not enabled:
+# on this codebase it is dominated by `unreadable_literal` over the LZMA and
+# SHA-256 constant tables and by `cast_possible_truncation` over the codecs'
+# deliberate narrowing casts, neither of which is a defect here.
+doc_markdown = "warn"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+must_use_candidate = "warn"
