@@ -52,6 +52,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Embedded bytes are emitted as a single byte-string literal instead of one
   numeric token per byte. Building a crate that embeds a 2 MB asset through
   `embed_bytes!(codec = deflate)` drops from 13.3 s to 1.0 s.
+- LZMA now encodes through `lzma-rust2` instead of the hand-written greedy
+  encoder, which never emitted rep-matches. Output reaches parity with
+  `xz -9`: a 272 KB JSON asset drops from 31,143 to 22,690 bytes and a 4 MB
+  one from 424,672 to 303,700. The decoder is unchanged and still ours, and
+  interop with `xz` is verified in both directions.
+
+  Encoding is correspondingly slower, roughly 4x from 16 MB up, and the
+  proc macro re-encodes whenever the calling crate recompiles. See the
+  README's note on `lzma` and build times for the
+  `[profile.dev.build-override]` mitigation. `lzma-rust2` is Apache-2.0 and
+  is a build-time dependency only; it is never linked into a consumer's
+  binary, and embark's own crates stay MIT.
 
 ## [0.1.0]
 
