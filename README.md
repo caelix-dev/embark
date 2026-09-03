@@ -209,11 +209,11 @@ plus whichever codec features you need; see the `no_std` job in
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) for a worked example
 against `thumbv7em-none-eabihf`.
 
-### A note on `lzma` and build times
+### A note on `lzma`, `zstd` and build times
 
-LZMA gives the best ratio of the six codecs, and it is the slowest to
-encode by a wide margin. Encoding happens in the proc macro, so you pay it
-while compiling, not at run time.
+LZMA gives the best ratio of the six codecs, and `zstd` is now close behind
+it; both cost real time to encode. Encoding happens in the proc macro, so
+you pay it while compiling, not at run time.
 
 The part that surprises people: the macro re-runs whenever the crate holding
 the `embed_bytes!` or `#[derive(Embed)]` call recompiles. Editing **any**
@@ -235,10 +235,17 @@ put this in the manifest of the crate that does the embedding:
 opt-level = 3
 ```
 
-Rules of thumb: under a few MB, `lzma` costs a few seconds per rebuild with
-that override in place and is usually worth it. Past roughly 16 MB per
-asset, reach for `zstd` or `deflate` instead, or keep `lzma` and accept a
-slow build.
+`zstd` sits in the same bracket. Its encoder parses each block by price and
+reprices four times over, which buys a payload within 1% of what real
+`zstd -19` achieves. What that costs depends on how much searching the asset
+gives it: with the override in place, a redundant asset runs at about 0.2 s
+per MiB and a large binary one at about 3 s per MiB, and 32 MB of the latter
+takes around 100 s. Without the override, multiply by roughly ten.
+
+Rules of thumb: under a few MB, `lzma` or `zstd` costs a few seconds per
+rebuild with that override in place and is usually worth it. Past roughly
+16 MB per asset, reach for `deflate`, `lz4` or `snappy` instead, or accept
+a slow build.
 
 Only `codec = auto_small` runs the LZMA encoder; the other two policies stop
 short of it and are cheap by comparison. Encoding a 32 MB asset with each,
