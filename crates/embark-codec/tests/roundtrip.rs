@@ -10,6 +10,8 @@ const CODECS: &[CodecId] = &[
     CodecId::Lz4,
     #[cfg(feature = "snappy")]
     CodecId::Snappy,
+    #[cfg(feature = "zstd")]
+    CodecId::Zstd,
 ];
 
 #[test]

@@ -13,6 +13,8 @@ mod lz4;
 #[cfg(feature = "snappy")]
 mod snappy;
 mod store;
+#[cfg(feature = "zstd")]
+mod zstd;
 
 #[cfg(feature = "enc")]
 pub use best::compress_best;

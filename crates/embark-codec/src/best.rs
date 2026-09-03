@@ -38,6 +38,13 @@ pub fn compress_best(input: &[u8]) -> (CodecId, Vec<u8>) {
         &mut best_id,
         &mut best,
     );
+    #[cfg(feature = "zstd")]
+    consider(
+        CodecId::Zstd,
+        crate::zstd::compress(input),
+        &mut best_id,
+        &mut best,
+    );
 
     let _ = &consider; // silence unused warning when no codec feature is on
     (best_id, best)

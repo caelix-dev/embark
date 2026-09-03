@@ -14,6 +14,8 @@ pub fn compress(id: CodecId, input: &[u8]) -> Vec<u8> {
         CodecId::Lz4 => crate::lz4::compress(input),
         #[cfg(feature = "snappy")]
         CodecId::Snappy => crate::snappy::compress(input),
+        #[cfg(feature = "zstd")]
+        CodecId::Zstd => crate::zstd::compress(input),
         // Codecs whose feature is off fall back to Store so encoding never fails.
         _ => crate::store::compress(input),
     }
@@ -29,6 +31,8 @@ pub fn decompress(id: CodecId, input: &[u8], orig_len: usize) -> Result<Vec<u8>,
         CodecId::Lz4 => crate::lz4::decompress(input, orig_len),
         #[cfg(feature = "snappy")]
         CodecId::Snappy => crate::snappy::decompress(input, orig_len),
+        #[cfg(feature = "zstd")]
+        CodecId::Zstd => crate::zstd::decompress(input, orig_len),
         other => Err(Error::UnknownCodec(other.as_u8())),
     }
 }

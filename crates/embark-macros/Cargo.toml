@@ -26,3 +26,4 @@ embark-crypt = { workspace = true, features = ["enc"] }
 deflate = ["embark-codec/deflate"]
 lz4 = ["embark-codec/lz4"]
 snappy = ["embark-codec/snappy"]
+zstd = ["embark-codec/zstd"]
