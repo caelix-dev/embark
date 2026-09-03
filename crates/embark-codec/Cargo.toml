@@ -26,12 +26,23 @@ lz4_flex = { version = "0.11", default-features = false, features = ["safe-decod
 # checksum (we don't need it), and "std" would pull in std::io. Snappy is
 # self-implemented (no dep).
 ruzstd = { version = "0.9", default-features = false, optional = true }
+# LZMA1 encoder, a port of tukaani's "xz for java". Only the encoder is taken:
+# our own decoder is what ships in a user's binary, so this is a build-time
+# dependency of the `enc` half and never reaches the `dec` path. Default
+# features are all dropped -- "std" would pull in std::io, "optimization" is
+# the crate's only unsafe code, and "lzip"/"xz" are container formats we do
+# not emit (the latter would also drag in sha2).
+lzma-rust2 = { version = "0.20.1", default-features = false, features = ["encoder"], optional = true }
 
 [features]
 default = []
 std = []
 alloc = ["embark-format/alloc"]
-enc = ["alloc", "embark-format/enc"]
+# Cargo cannot express "enable this dependency when `enc` and `lzma` are both
+# on", so lzma-rust2 hangs off `enc`. That is the side to attach it to: `enc`
+# is compiled for the host inside the proc macro, while `dec` is compiled for
+# the consumer's target, which may be no_std.
+enc = ["alloc", "embark-format/enc", "dep:lzma-rust2"]
 dec = ["alloc", "embark-format/dec"]
 deflate = ["dep:miniz_oxide"]
 lz4 = ["dep:lz4_flex"]

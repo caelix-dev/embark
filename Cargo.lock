@@ -131,6 +131,7 @@ version = "0.1.0"
 dependencies = [
  "embark-format",
  "lz4_flex",
+ "lzma-rust2",
  "miniz_oxide",
  "ruzstd",
 ]
@@ -249,6 +250,12 @@ name = "lz4_flex"
 version = "0.11.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "373f5eceeeab7925e0c1098212f2fbc4d416adec9d35051a6ab251e824c1854a"
+
+[[package]]
+name = "lzma-rust2"
+version = "0.20.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e2a88783b84d2d67ef2791778a9e76bfb68b8017aaf6c9d7d5f2626a478b16c"
 
 [[package]]
 name = "memchr"
