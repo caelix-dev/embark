@@ -25,7 +25,7 @@ pub(super) struct Match {
     pub(super) offset: usize,
 }
 
-/// Search effort, derived from the input size in [`Params::for_input`].
+/// Search effort, derived from the searchable span in [`Params::for_input`].
 pub(super) struct Params {
     pub(super) hash_bits: u32,
     pub(super) depth: u32,
@@ -35,9 +35,23 @@ pub(super) struct Params {
 }
 
 impl Params {
-    pub(super) fn for_input(len: usize) -> Self {
+    /// `window` is the match window; positions older than that are out of
+    /// reach, so it, not the whole input, bounds how many keys the table has
+    /// to keep apart.
+    pub(super) fn for_input(len: usize, window: usize) -> Self {
+        // One bucket per live position. Undersizing this is expensive
+        // in a way that is invisible in the output: the buckets still hold
+        // every candidate, the chains behind them just get longer, so the
+        // encoder walks more entries to reach the same matches. Measured on
+        // 4 MiB of poorly compressible data, raising the ceiling from 18 to
+        // 22 cut encode time by half and changed the output by zero bytes.
+        //
+        // The ceiling is a memory bound: the table is `4 << hash_bits`
+        // bytes, so 22 costs 16 MiB. It only exists at build time, next to a
+        // chain array that is already window-sized.
+        let searchable = len.min(window);
         Self {
-            hash_bits: ceil_log2(len).clamp(10, 18),
+            hash_bits: ceil_log2(searchable).clamp(10, 22),
             depth: 64,
             nice_len: 192,
         }

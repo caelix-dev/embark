@@ -40,7 +40,7 @@ pub(super) fn encode(input: &[u8]) -> Vec<u8> {
         return out;
     }
 
-    let params = Params::for_input(len);
+    let params = Params::for_input(len, window);
     let mut chain = HashChain::new(len, window, params.hash_bits);
     let mut repeats = [1usize, 4, 8];
     let mut at = 0usize;
