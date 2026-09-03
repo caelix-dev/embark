@@ -7,6 +7,8 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/caelix-dev/embark"
+homepage = "https://github.com/caelix-dev/embark"
+readme = "README.md"
 rust-version = "1.87"
 
 [workspace.dependencies]
