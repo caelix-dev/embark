@@ -26,15 +26,13 @@ pub(crate) struct CryptArgs {
 
 impl CryptArgs {
     /// The codec to compress with before sealing. Defaults to `Deflate` when
-    /// unspecified. An `auto` policy is accepted but, for `embed_crypt!`,
-    /// simplifies to `Deflate` too rather than running the codec-selection
-    /// pass `embed_bytes!` does -- the entry is encrypted either way, so the
-    /// size delta between codecs matters less here.
+    /// unspecified.
+    ///
+    /// The `auto` policies run the same selection pass here as anywhere
+    /// else. Compression happens before sealing, so the pass reads the
+    /// plaintext and the cipher never sees the difference.
     pub(crate) fn codec(&self) -> CodecArg {
-        match self.codec {
-            None | Some(CodecArg::Auto(_)) => CodecArg::Fixed(CodecId::Deflate),
-            Some(fixed) => fixed,
-        }
+        self.codec.unwrap_or(CodecArg::Fixed(CodecId::Deflate))
     }
 
     /// The AEAD cipher to seal with. Defaults to `ChaCha20Poly1305` when

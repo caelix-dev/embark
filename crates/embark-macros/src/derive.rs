@@ -45,13 +45,7 @@ pub(crate) fn expand(input: &syn::DeriveInput) -> syn::Result<proc_macro2::Token
         let shown = shown_child(&cfg, rel);
         let data = build::read(abs, &shown, folder_span)?;
         let entry = if let Some(key) = key_material {
-            // As in `embed_crypt!`: the encrypted path does not run the
-            // selection pass, and an `auto` policy simplifies to Deflate.
-            let codec = match cfg.codec {
-                CodecArg::Auto(_) => CodecArg::Fixed(CodecId::Deflate),
-                fixed => fixed,
-            };
-            crypt::seal_with_key(&data, codec, cfg.cipher, key, &shown, folder_span)?
+            crypt::seal_with_key(&data, cfg.codec, cfg.cipher, key, &shown, folder_span)?
         } else {
             build::build_entry(cfg.codec, &data, &shown, folder_span)?
         };
