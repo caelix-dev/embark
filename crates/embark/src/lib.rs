@@ -52,6 +52,24 @@ pub use embed::{entries, lookup, Embed, EmbeddedFile, Entries, Manifest};
 #[cfg(feature = "encryption")]
 pub use encrypted::{EmbeddedKey, EncryptedFile, RuntimeKey};
 
+// Re-exported for advanced users who want to call a codec or cipher
+// directly, or implement one of these traits for manual (non-macro) use.
+// `#[derive(Embed)]` and the `embed_*!` macros only ever pick a built-in
+// codec/cipher by on-binary id — they cannot use a custom implementation.
+pub use embark_codec::Codec;
+#[cfg(feature = "deflate")]
+pub use embark_codec::Deflate;
+#[cfg(feature = "lz4")]
+pub use embark_codec::Lz4;
+#[cfg(feature = "lzma")]
+pub use embark_codec::Lzma;
+#[cfg(feature = "snappy")]
+pub use embark_codec::Snappy;
+#[cfg(feature = "zstd")]
+pub use embark_codec::Zstd;
+#[cfg(feature = "encryption")]
+pub use embark_crypt::{Aead, ChaCha20Poly1305};
+
 #[cfg(feature = "derive")]
 pub use embark_macros::{embed_bytes, embed_crypt, Embed};
 
