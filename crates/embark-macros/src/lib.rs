@@ -4,6 +4,8 @@ mod args;
 mod build;
 mod crypt;
 mod crypt_args;
+mod derive;
+mod glob;
 
 use embark_format::CodecId;
 use proc_macro::TokenStream;
@@ -50,7 +52,8 @@ pub fn embed_crypt(input: TokenStream) -> TokenStream {
         Some((masked, mask)) => {
             let masked_arr = array32(&masked);
             let mask_arr = array32(&mask);
-            quote!(::embark::EncryptedFile::with_embedded_key(#entry_lit, #masked_arr, #mask_arr)).into()
+            quote!(::embark::EncryptedFile::with_embedded_key(#entry_lit, #masked_arr, #mask_arr))
+                .into()
         }
         None => quote!(::embark::EncryptedFile::with_runtime_key(#entry_lit)).into(),
     }
@@ -59,4 +62,10 @@ pub fn embed_crypt(input: TokenStream) -> TokenStream {
 fn array32(bytes: &[u8; 32]) -> proc_macro2::TokenStream {
     let elems = bytes.iter().map(|b| quote::quote!(#b));
     quote::quote!([#(#elems),*])
+}
+
+#[proc_macro_derive(Embed, attributes(embark))]
+pub fn derive_embed(input: TokenStream) -> TokenStream {
+    let parsed = syn::parse_macro_input!(input as syn::DeriveInput);
+    derive::expand(parsed).into()
 }

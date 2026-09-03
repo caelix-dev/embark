@@ -47,10 +47,15 @@ pub(crate) fn seal_file(data: &[u8], codec: CodecId, mode: KeyMode) -> Sealed {
 }
 
 fn env_key() -> [u8; 32] {
-    let hex = std::env::var("EMBARK_KEY")
-        .expect("embark: key = runtime requires the EMBARK_KEY env var (64 hex chars) at build time");
+    let hex = std::env::var("EMBARK_KEY").expect(
+        "embark: key = runtime requires the EMBARK_KEY env var (64 hex chars) at build time",
+    );
     let hex = hex.trim();
-    assert_eq!(hex.len(), 64, "embark: EMBARK_KEY must be 64 hex chars (32 bytes)");
+    assert_eq!(
+        hex.len(),
+        64,
+        "embark: EMBARK_KEY must be 64 hex chars (32 bytes)"
+    );
     let mut key = [0u8; 32];
     for (i, b) in key.iter_mut().enumerate() {
         *b = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16)

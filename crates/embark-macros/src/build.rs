@@ -24,14 +24,28 @@ pub(crate) fn build_entry(codec: CodecId, data: &[u8]) -> Vec<u8> {
         (CodecId::Store, data.to_vec())
     };
     let mut entry = Vec::new();
-    write_entry(&mut entry, codec, CryptoId::None, data.len() as u64, None, &payload);
+    write_entry(
+        &mut entry,
+        codec,
+        CryptoId::None,
+        data.len() as u64,
+        None,
+        &payload,
+    );
     entry
 }
 
 pub(crate) fn build_entry_best(data: &[u8]) -> Vec<u8> {
     let (codec, payload) = embark_codec::compress_best(data);
     let mut entry = Vec::new();
-    write_entry(&mut entry, codec, CryptoId::None, data.len() as u64, None, &payload);
+    write_entry(
+        &mut entry,
+        codec,
+        CryptoId::None,
+        data.len() as u64,
+        None,
+        &payload,
+    );
     entry
 }
 

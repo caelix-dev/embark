@@ -40,6 +40,9 @@ impl Parse for Args {
                 }
             });
         }
-        Ok(Args { path: path.value(), codec })
+        Ok(Args {
+            path: path.value(),
+            codec,
+        })
     }
 }

@@ -10,9 +10,15 @@ pub trait Embed {
     fn iter() -> Entries;
 }
 
+enum Source {
+    Static(&'static [u8]),
+    #[cfg(feature = "std")]
+    Owned(alloc::vec::Vec<u8>),
+}
+
 pub struct EmbeddedFile {
-    entry: &'static [u8],
-    path: &'static str,
+    source: Source,
+    path: Cow<'static, str>,
     key: Option<([u8; 32], [u8; 32])>,
 }
 
@@ -23,20 +29,30 @@ impl EmbeddedFile {
     }
 
     pub fn try_data(&self) -> Result<Cow<'static, [u8]>, embark_format::Error> {
-        let key = self
-            .key
-            .map(|(masked, mask)| embark_crypt_xor(masked, mask));
-        crate::decode::decode(self.entry, key)
+        match &self.source {
+            Source::Static(entry) => {
+                let key = self
+                    .key
+                    .map(|(masked, mask)| embark_crypt_xor(masked, mask));
+                crate::decode::decode(entry, key)
+            }
+            #[cfg(feature = "std")]
+            Source::Owned(bytes) => Ok(Cow::Owned(bytes.clone())),
+        }
     }
 
     pub fn size(&self) -> usize {
-        embark_format::read_header(self.entry)
-            .map(|h| h.orig_len as usize)
-            .unwrap_or(0)
+        match &self.source {
+            Source::Static(entry) => embark_format::read_header(entry)
+                .map(|h| h.orig_len as usize)
+                .unwrap_or(0),
+            #[cfg(feature = "std")]
+            Source::Owned(bytes) => bytes.len(),
+        }
     }
 
-    pub fn path(&self) -> &'static str {
-        self.path
+    pub fn path(&self) -> &str {
+        &self.path
     }
 }
 
@@ -66,8 +82,8 @@ pub fn lookup(manifest: &'static [Manifest], path: &str) -> Option<EmbeddedFile>
     let idx = manifest.binary_search_by(|m| m.path.cmp(path)).ok()?;
     let m = &manifest[idx];
     Some(EmbeddedFile {
-        entry: m.entry,
-        path: m.path,
+        source: Source::Static(m.entry),
+        path: Cow::Borrowed(m.path),
         key: None,
     })
 }
@@ -88,8 +104,24 @@ pub fn lookup_encrypted(
     let idx = manifest.binary_search_by(|m| m.path.cmp(path)).ok()?;
     let m = &manifest[idx];
     Some(EmbeddedFile {
-        entry: m.entry,
-        path: m.path,
+        source: Source::Static(m.entry),
+        path: Cow::Borrowed(m.path),
         key: Some((masked, mask)),
+    })
+}
+
+/// Dev-mode escape hatch used by `#[embark(dev)]`: read the file straight off
+/// disk (relative to the folder the derive was pointed at) instead of the
+/// embedded, compiled-in copy. Only ever called from a `#[cfg(debug_assertions)]`
+/// branch the derive emits, so release builds never reference it.
+#[cfg(feature = "std")]
+#[doc(hidden)]
+pub fn __dev_file(folder_abs: &str, path: &str) -> Option<EmbeddedFile> {
+    let full = std::path::Path::new(folder_abs).join(path);
+    let bytes = std::fs::read(full).ok()?;
+    Some(EmbeddedFile {
+        source: Source::Owned(bytes),
+        path: Cow::Owned(path.to_string()),
+        key: None,
     })
 }

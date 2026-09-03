@@ -14,6 +14,8 @@ mod meta;
 
 pub use bytes::EmbeddedBytes;
 pub use embark_format::Error;
+#[cfg(feature = "std")]
+pub use embed::__dev_file;
 #[cfg(feature = "encryption")]
 pub use embed::lookup_encrypted;
 pub use embed::{entries, lookup, Embed, EmbeddedFile, Entries, Manifest};
@@ -21,7 +23,7 @@ pub use embed::{entries, lookup, Embed, EmbeddedFile, Entries, Manifest};
 pub use encrypted::EncryptedFile;
 
 #[cfg(feature = "derive")]
-pub use embark_macros::{embed_bytes, embed_crypt};
+pub use embark_macros::{embed_bytes, embed_crypt, Embed};
 
 #[cfg(feature = "metadata")]
 #[doc(hidden)]

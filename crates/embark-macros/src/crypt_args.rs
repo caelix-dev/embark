@@ -65,6 +65,10 @@ impl Parse for CryptArgs {
             }
         }
 
-        Ok(CryptArgs { path: path.value(), codec, runtime_key })
+        Ok(CryptArgs {
+            path: path.value(),
+            codec,
+            runtime_key,
+        })
     }
 }
