@@ -3,6 +3,7 @@
 
 use alloc::vec::Vec;
 
+use super::huffman;
 use super::matcher::{self, Match};
 use super::sequences::{self, Coded, Tables};
 
@@ -12,6 +13,10 @@ pub(super) const MAX_BLOCK: usize = 128 * 1024;
 const RAW: u8 = 0;
 const RLE: u8 = 1;
 const COMPRESSED: u8 = 2;
+
+const RAW_LITERALS: u8 = 0;
+const RLE_LITERALS: u8 = 1;
+const COMPRESSED_LITERALS: u8 = 2;
 
 /// One block: an input range and the sequences that reconstruct it.
 struct Chunk {
@@ -152,25 +157,65 @@ fn compressed_body(
     body
 }
 
-/// Write a `Raw_Literals_Block`, or an RLE one when every literal is the same
-/// byte (RFC 8478, section 3.1.1.3.1.1).
+/// Write the literals section, taking whichever of the three forms is
+/// smallest: one repeated byte, Huffman-coded, or stored.
 fn write_literals(out: &mut Vec<u8>, literals: &[u8]) {
-    let regenerated = literals.len();
-    let uniform = !literals.is_empty() && literals.iter().all(|&b| b == literals[0]);
-    let kind = if uniform { 1u8 } else { 0u8 };
-    if regenerated < 32 {
-        out.push((regenerated as u8) << 3 | kind);
-    } else if regenerated < 4096 {
-        out.push(((regenerated as u8) & 0xf) << 4 | 1 << 2 | kind);
-        out.push((regenerated >> 4) as u8);
-    } else {
-        out.push(((regenerated as u8) & 0xf) << 4 | 3 << 2 | kind);
-        out.push((regenerated >> 4) as u8);
-        out.push((regenerated >> 12) as u8);
-    }
-    if uniform {
+    if !literals.is_empty() && literals.iter().all(|&b| b == literals[0]) {
+        write_literals_header(out, RLE_LITERALS, literals.len(), None);
         out.push(literals[0]);
-    } else {
-        out.extend_from_slice(literals);
+        return;
     }
+    if let Some(content) = huffman::compress(literals) {
+        let coded = header_len(literals.len(), Some(content.len())) + content.len();
+        if coded < header_len(literals.len(), None) + literals.len() {
+            write_literals_header(
+                out,
+                COMPRESSED_LITERALS,
+                literals.len(),
+                Some(content.len()),
+            );
+            out.extend_from_slice(&content);
+            return;
+        }
+    }
+    write_literals_header(out, RAW_LITERALS, literals.len(), None);
+    out.extend_from_slice(literals);
+}
+
+/// Shape of a `Literals_Section_Header`: the size format, how many bits it
+/// occupies, how many bits each size field occupies, and the total length
+/// in bytes (RFC 8478, section 3.1.1.3.1.1).
+fn header_shape(regenerated: usize, compressed: Option<usize>) -> (u8, u32, u32, usize) {
+    match compressed {
+        // Stored and run-length literals carry one size field.
+        None if regenerated < 32 => (0, 1, 5, 1),
+        None if regenerated < 4096 => (1, 2, 12, 2),
+        None => (3, 2, 20, 3),
+        // Huffman-coded literals carry two equal size fields, and this
+        // encoder always writes four streams, so the one-stream format 00 is
+        // never used.
+        Some(size) if regenerated < 1024 && size < 1024 => (1, 2, 10, 3),
+        Some(size) if regenerated < 16384 && size < 16384 => (2, 2, 14, 4),
+        _ => (3, 2, 18, 5),
+    }
+}
+
+fn header_len(regenerated: usize, compressed: Option<usize>) -> usize {
+    header_shape(regenerated, compressed).3
+}
+
+/// Write the header as one little-endian bit field, lowest field first.
+fn write_literals_header(
+    out: &mut Vec<u8>,
+    kind: u8,
+    regenerated: usize,
+    compressed: Option<usize>,
+) {
+    let (format, format_bits, size_bits, bytes) = header_shape(regenerated, compressed);
+    let mut word =
+        u64::from(kind) | u64::from(format) << 2 | (regenerated as u64) << (2 + format_bits);
+    if let Some(size) = compressed {
+        word |= (size as u64) << (2 + format_bits + size_bits);
+    }
+    out.extend_from_slice(&word.to_le_bytes()[..bytes]);
 }
