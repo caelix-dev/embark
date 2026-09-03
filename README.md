@@ -198,7 +198,7 @@ it the embedded data is unrecoverable.
 | `deflate`    | yes     | the Deflate codec (a candidate from `auto` out) |
 | `lz4`        | no      | the LZ4 codec (a candidate in every `auto` policy) |
 | `snappy`     | no      | the Snappy codec, self-implemented, no dependency (every `auto` policy) |
-| `zstd`       | no      | the Zstd codec (a candidate from `auto` out) |
+| `zstd`       | no      | the Zstd codec, self-written encoder, decodes via `ruzstd` (a candidate from `auto` out) |
 | `lzma`       | no      | the LZMA codec, via `lzma-rust2` (`auto_small` only; see the build-time note) |
 | `encryption` | no      | `embed_crypt!`, `EncryptedFile` (ChaCha20-Poly1305) |
 | `aes`        | no      | AES-256-GCM cipher for `embed_crypt!(cipher = aes)` |
