@@ -1,59 +1,63 @@
-//! The [`Codec`] trait abstracts over compression codecs.
+//! Named, zero-sized handles for the built-in codecs.
 //!
-//! Each built-in codec (gated by its own cargo feature) is a zero-sized unit
-//! struct implementing [`Codec`] on top of the same code the derive macros
-//! and [`crate::compress`]/[`crate::decompress`] dispatch use — this is a
-//! manual, direct-call entry point into that machinery, not a new
-//! implementation. Advanced users who want to call a specific codec without
-//! going through `CodecId` dispatch can use these directly; they can also
-//! implement `Codec` for their own type to reuse embark-codec's function
-//! signatures manually. `#[derive(Embed)]` and `embed_bytes!` only ever
-//! select among the built-in codecs by [`embark_format::CodecId`] — a
-//! proc-macro cannot call into a user's own codec implementation at compile
-//! time, so custom codecs are usable only through this manual trait, never
-//! through the derive/macro path.
+//! Each codec compiled into the build (gated by its own cargo feature) has a
+//! unit struct here — [`Store`], [`Deflate`], [`Lz4`], [`Snappy`], [`Zstd`],
+//! [`Lzma`] — carrying inherent `compress`/`decompress` methods and an
+//! [`Codec::ID`] naming its on-binary [`CodecId`]. They are a direct-call
+//! entry point into the same code [`crate::compress`] and
+//! [`crate::decompress`] reach through `CodecId` dispatch, for callers who
+//! already know which codec they want.
+//!
+//! [`Codec`] is sealed: it exists to associate a type with its on-binary id,
+//! not as an extension point. The on-binary format spends four bits on the
+//! codec id and `embark-format` assigns every accepted value to a built-in,
+//! so a third-party codec has no id it could occupy, nothing would ever
+//! decode it, and `#[derive(Embed)]` / `embed_bytes!` select a codec by
+//! `CodecId` at compile time and so can never name one.
 
 extern crate alloc;
+#[cfg(any(feature = "enc", feature = "dec"))]
 use alloc::vec::Vec;
 use embark_format::CodecId;
 #[cfg(feature = "dec")]
 use embark_format::Error;
 
-/// A compression codec: turns bytes into a smaller (ideally) representation
-/// and back.
+mod sealed {
+    pub trait Sealed {}
+}
+
+/// Associates a built-in codec type with its on-binary [`CodecId`].
 ///
-/// Built-in codecs are zero-sized unit structs ([`Store`], [`Deflate`],
-/// [`Lz4`], [`Snappy`], [`Zstd`], [`Lzma`]) implementing this trait, each
-/// gated by its own cargo feature. Implement `Codec` for your own type to
-/// use embark-codec's function signatures with a custom codec — this only
-/// works for manual, direct calls; `#[derive(Embed)]` and `embed_bytes!`
-/// cannot pick up a user-defined codec.
-pub trait Codec {
+/// This trait is sealed and cannot be implemented outside this crate. The
+/// codec id is a fixed four-bit field of the embedded entry header with no
+/// values left over, so there is no id a downstream codec could claim and no
+/// path by which the derive macros or [`crate::decompress`] could reach one.
+/// Compression itself lives on inherent methods of each codec type, so
+/// calling `Deflate.compress(..)` does not require this trait in scope.
+pub trait Codec: sealed::Sealed {
     /// The on-binary [`CodecId`] this codec corresponds to.
     const ID: CodecId;
-
-    /// Compress `input`.
-    #[cfg(feature = "enc")]
-    fn compress(&self, input: &[u8]) -> Vec<u8>;
-
-    /// Decompress `input`, which must expand to exactly `orig_len` bytes.
-    #[cfg(feature = "dec")]
-    fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error>;
 }
 
 /// The identity codec: stores bytes unchanged.
 pub struct Store;
 
+impl sealed::Sealed for Store {}
+
 impl Codec for Store {
     const ID: CodecId = CodecId::Store;
+}
 
+impl Store {
+    /// Compress `input`.
     #[cfg(feature = "enc")]
-    fn compress(&self, input: &[u8]) -> Vec<u8> {
+    pub fn compress(&self, input: &[u8]) -> Vec<u8> {
         crate::store::compress(input)
     }
 
+    /// Decompress `input`, which must expand to exactly `orig_len` bytes.
     #[cfg(feature = "dec")]
-    fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
+    pub fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
         crate::store::decompress(input, orig_len)
     }
 }
@@ -63,16 +67,24 @@ impl Codec for Store {
 pub struct Deflate;
 
 #[cfg(feature = "deflate")]
+impl sealed::Sealed for Deflate {}
+
+#[cfg(feature = "deflate")]
 impl Codec for Deflate {
     const ID: CodecId = CodecId::Deflate;
+}
 
+#[cfg(feature = "deflate")]
+impl Deflate {
+    /// Compress `input`.
     #[cfg(feature = "enc")]
-    fn compress(&self, input: &[u8]) -> Vec<u8> {
+    pub fn compress(&self, input: &[u8]) -> Vec<u8> {
         crate::deflate::compress(input)
     }
 
+    /// Decompress `input`, which must expand to exactly `orig_len` bytes.
     #[cfg(feature = "dec")]
-    fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
+    pub fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
         crate::deflate::decompress(input, orig_len)
     }
 }
@@ -82,16 +94,24 @@ impl Codec for Deflate {
 pub struct Lz4;
 
 #[cfg(feature = "lz4")]
+impl sealed::Sealed for Lz4 {}
+
+#[cfg(feature = "lz4")]
 impl Codec for Lz4 {
     const ID: CodecId = CodecId::Lz4;
+}
 
+#[cfg(feature = "lz4")]
+impl Lz4 {
+    /// Compress `input`.
     #[cfg(feature = "enc")]
-    fn compress(&self, input: &[u8]) -> Vec<u8> {
+    pub fn compress(&self, input: &[u8]) -> Vec<u8> {
         crate::lz4::compress(input)
     }
 
+    /// Decompress `input`, which must expand to exactly `orig_len` bytes.
     #[cfg(feature = "dec")]
-    fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
+    pub fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
         crate::lz4::decompress(input, orig_len)
     }
 }
@@ -101,16 +121,24 @@ impl Codec for Lz4 {
 pub struct Snappy;
 
 #[cfg(feature = "snappy")]
+impl sealed::Sealed for Snappy {}
+
+#[cfg(feature = "snappy")]
 impl Codec for Snappy {
     const ID: CodecId = CodecId::Snappy;
+}
 
+#[cfg(feature = "snappy")]
+impl Snappy {
+    /// Compress `input`.
     #[cfg(feature = "enc")]
-    fn compress(&self, input: &[u8]) -> Vec<u8> {
+    pub fn compress(&self, input: &[u8]) -> Vec<u8> {
         crate::snappy::compress(input)
     }
 
+    /// Decompress `input`, which must expand to exactly `orig_len` bytes.
     #[cfg(feature = "dec")]
-    fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
+    pub fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
         crate::snappy::decompress(input, orig_len)
     }
 }
@@ -120,16 +148,24 @@ impl Codec for Snappy {
 pub struct Zstd;
 
 #[cfg(feature = "zstd")]
+impl sealed::Sealed for Zstd {}
+
+#[cfg(feature = "zstd")]
 impl Codec for Zstd {
     const ID: CodecId = CodecId::Zstd;
+}
 
+#[cfg(feature = "zstd")]
+impl Zstd {
+    /// Compress `input`.
     #[cfg(feature = "enc")]
-    fn compress(&self, input: &[u8]) -> Vec<u8> {
+    pub fn compress(&self, input: &[u8]) -> Vec<u8> {
         crate::zstd::compress(input)
     }
 
+    /// Decompress `input`, which must expand to exactly `orig_len` bytes.
     #[cfg(feature = "dec")]
-    fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
+    pub fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
         crate::zstd::decompress(input, orig_len)
     }
 }
@@ -139,16 +175,24 @@ impl Codec for Zstd {
 pub struct Lzma;
 
 #[cfg(feature = "lzma")]
+impl sealed::Sealed for Lzma {}
+
+#[cfg(feature = "lzma")]
 impl Codec for Lzma {
     const ID: CodecId = CodecId::Lzma;
+}
 
+#[cfg(feature = "lzma")]
+impl Lzma {
+    /// Compress `input`.
     #[cfg(feature = "enc")]
-    fn compress(&self, input: &[u8]) -> Vec<u8> {
+    pub fn compress(&self, input: &[u8]) -> Vec<u8> {
         crate::lzma::compress(input)
     }
 
+    /// Decompress `input`, which must expand to exactly `orig_len` bytes.
     #[cfg(feature = "dec")]
-    fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
+    pub fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
         crate::lzma::decompress(input, orig_len)
     }
 }
@@ -158,8 +202,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn store_roundtrips_via_trait() {
-        let data = b"trait roundtrip via Store";
+    fn store_roundtrips_via_handle() {
+        let data = b"handle roundtrip via Store";
         let c = Store.compress(data);
         assert_eq!(Store.decompress(&c, data.len()).unwrap(), data);
         assert_eq!(Store::ID, CodecId::Store);
@@ -167,8 +211,8 @@ mod tests {
 
     #[cfg(feature = "deflate")]
     #[test]
-    fn deflate_roundtrips_via_trait() {
-        let data = b"trait roundtrip via Deflate trait roundtrip via Deflate".repeat(4);
+    fn deflate_roundtrips_via_handle() {
+        let data = b"handle roundtrip via Deflate handle roundtrip via Deflate".repeat(4);
         let c = Deflate.compress(&data);
         assert_eq!(Deflate.decompress(&c, data.len()).unwrap(), data);
         assert_eq!(Deflate::ID, CodecId::Deflate);
