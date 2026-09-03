@@ -21,7 +21,15 @@ pub(crate) fn decode(
     let mut rc = RangeDecoder::new(stream).ok_or(Error::Corrupt)?;
     let mut model = LzmaModel::new(lc, lp, pb);
 
-    let mut out: Vec<u8> = Vec::with_capacity(orig_len);
+    // `orig_len` is the caller-supplied, attacker-controllable uncompressed
+    // size from the entry header; `RangeDecoder::new` above only requires 5
+    // bytes of well-formed range-coder preamble, so a 13-byte header plus a
+    // handful of stream bytes is enough to reach this point with an
+    // arbitrarily large `orig_len`. Reserve fallibly so that claim turns into
+    // `Error::Corrupt` rather than an allocator abort.
+    let mut out: Vec<u8> = Vec::new();
+    out.try_reserve_exact(orig_len)
+        .map_err(|_| Error::Corrupt)?;
     let mut state = 0usize;
     let (mut rep0, mut rep1, mut rep2, mut rep3) = (0u32, 0u32, 0u32, 0u32);
 

@@ -172,6 +172,27 @@ mod tests {
     }
 
     #[test]
+    fn hostile_orig_len_does_not_over_allocate() {
+        // A too-short input fails the `input.len() < HEADER_LEN` check
+        // before ever reaching the allocation, so that alone doesn't prove
+        // the allocation is bounded. Build a well-formed 13-byte header
+        // (valid properties byte, and a stored size matching the huge
+        // orig_len we pass in, so the header's own size check doesn't
+        // short-circuit us) followed by a minimal 5-byte range-coder
+        // preamble (RangeDecoder::new only requires len >= 5 and a leading
+        // zero byte). That's enough to reach `decoder::decode` with an
+        // attacker-chosen orig_len. Before the fix this called
+        // `Vec::with_capacity(orig_len)` and aborted the process.
+        let hostile_orig_len: usize = 1 << 40; // 1 TiB
+        let mut input = Vec::new();
+        input.push(0x5D); // props: lc=3, lp=0, pb=2
+        input.extend_from_slice(&0u32.to_le_bytes()); // dict size (unchecked)
+        input.extend_from_slice(&(hostile_orig_len as u64).to_le_bytes());
+        input.extend_from_slice(&[0u8, 0, 0, 0, 0]); // range-coder preamble
+        assert!(decompress(&input, hostile_orig_len).is_err());
+    }
+
+    #[test]
     fn garbage_does_not_panic() {
         let mut x: u32 = 0xDEAD_BEEF;
         let mut junk = vec![0u8; 200];
