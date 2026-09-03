@@ -185,6 +185,10 @@ pub fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
                 copy_match(&mut out, offset, len)?;
             }
         }
+
+        if out.len() > orig_len {
+            return Err(Error::Corrupt);
+        }
     }
 
     if out.len() != orig_len {
@@ -238,5 +242,22 @@ mod tests {
     #[test]
     fn truncated_is_error() {
         assert!(decompress(&[0x04, 0xff], 4).is_err());
+    }
+
+    #[test]
+    fn overgrowth_is_rejected() {
+        // Preamble declares orig_len = 4, then a 4-byte literal ("AAAA") fills
+        // it exactly, followed by a 2-byte-offset copy tag that would append
+        // 64 more bytes (offset 1, len 64) -- output would balloon to 68
+        // bytes despite the declared length of 4. Must be rejected before
+        // that growth completes, not just via the final length check.
+        let body: &[u8] = &[
+            0x04, // preamble: orig_len = 4
+            0x0C, // literal tag: len - 1 = 3 -> 4 literal bytes
+            b'A', b'A', b'A', b'A', // the literal
+            0xFE, // copy tag: 2-byte offset, len - 1 = 63 -> len = 64
+            0x01, 0x00, // offset = 1
+        ];
+        assert!(decompress(body, 4).is_err());
     }
 }
