@@ -11,7 +11,11 @@ description = "Unified compression codec layer for embark."
 embark-format.workspace = true
 miniz_oxide = { version = "0.8", default-features = false, features = ["with-alloc"], optional = true }
 lz4_flex = { version = "0.11", default-features = false, features = ["safe-decode", "safe-encode"], optional = true }
-# ruzstd is added in Phase 2 (zstd). Snappy is self-implemented (no dep).
+# ruzstd is a pure-Rust, no_std+alloc zstd implementation. Default features
+# ("hash", "std") are dropped: "hash" only gates the optional xxhash content
+# checksum (we don't need it), and "std" would pull in std::io. Snappy is
+# self-implemented (no dep).
+ruzstd = { version = "0.9", default-features = false, optional = true }
 
 [features]
 default = []
@@ -22,5 +26,5 @@ dec = ["alloc", "embark-format/dec"]
 deflate = ["dep:miniz_oxide"]
 lz4 = ["dep:lz4_flex"]
 snappy = []
-zstd = []   # Phase 2: = ["dep:ruzstd"]
+zstd = ["dep:ruzstd"]
 lzma = []   # Phase 3
