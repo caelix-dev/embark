@@ -1,0 +1,47 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain: [stable, beta, "1.74"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: rustfmt, clippy
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --features "std derive deflate lz4 snappy encryption metadata" -- -D warnings
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace --features "std derive deflate lz4 snappy encryption metadata"
+
+  no_std:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7em-none-eabihf
+      - name: build runtime crates for no_std target
+        run: |
+          cargo build -p embark-format --no-default-features --features "alloc enc dec" --target thumbv7em-none-eabihf
+          cargo build -p embark-codec  --no-default-features --features "alloc dec deflate lz4 snappy" --target thumbv7em-none-eabihf
+          cargo build -p embark-crypt  --no-default-features --features "alloc dec" --target thumbv7em-none-eabihf
+          cargo build -p embark        --no-default-features --features "alloc deflate lz4 snappy" --target thumbv7em-none-eabihf
+
+  interop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pip install python-snappy
+      # `--test snappy_interop` selects the whole integration-test binary by
+      # target name; a plain `cargo test ... snappy_interop` filter would
+      # instead match against test *function* names (here `our_snappy_is_standard`)
+      # and silently run zero tests.
+      - run: EMBARK_SNAPPY_INTEROP=1 cargo test -p embark-codec --features "enc dec snappy" --test snappy_interop
