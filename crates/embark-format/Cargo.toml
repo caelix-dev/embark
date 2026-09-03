@@ -9,7 +9,7 @@ description = "Shared on-binary layout for the embark file-embedding toolkit."
 
 [features]
 default = ["std"]
-std = []
+std = ["alloc"]
 alloc = []
 enc = ["alloc"]
 dec = ["alloc"]
