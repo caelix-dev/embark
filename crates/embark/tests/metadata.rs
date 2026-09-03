@@ -1,3 +1,5 @@
+//! The `metadata` feature's SHA-256 implementation, against the FIPS 180-4
+//! `"abc"` vector.
 #![cfg(all(feature = "std", feature = "metadata"))]
 #[test]
 fn sha256_abc_vector() {

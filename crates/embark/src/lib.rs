@@ -63,7 +63,6 @@
 //!   with `embed_crypt!(..., cipher = aes)` or `#[embark(encrypt, cipher =
 //!   "aes")]` (implies `encryption`).
 //! - `metadata` — per-file [`EmbeddedFile::hash`] and [`EmbeddedFile::mime`].
-#![forbid(unsafe_code)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
@@ -111,6 +110,7 @@ pub use embark_macros::{Embed, embed_bytes, embed_crypt};
 
 #[cfg(feature = "metadata")]
 #[doc(hidden)]
+#[must_use]
 pub fn __sha256_for_test(d: &[u8]) -> [u8; 32] {
     meta::sha256(d)
 }

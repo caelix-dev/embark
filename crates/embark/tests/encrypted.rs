@@ -1,3 +1,10 @@
+//! `EncryptedFile` in both key modes, over hand-sealed entries.
+//!
+//! Covers decryption under an embedded build-time key and under a
+//! caller-supplied runtime key, rejection of a wrong runtime key, the UTF-8
+//! error position `decrypt_str` reports, and the type-level guarantee that a
+//! `RuntimeKey` handle is no larger than the entry reference it holds and so
+//! carries no key material.
 #![cfg(all(feature = "std", feature = "encryption"))]
 use embark::EncryptedFile;
 use embark_crypt::seal;

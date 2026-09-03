@@ -7,6 +7,7 @@ impl EmbeddedFile {
     /// and not read from the entry header (the format does not store a
     /// hash). Uses a self-contained `no_std + alloc` SHA-256 implementation
     /// with no external dependency.
+    #[must_use]
     pub fn hash(&self) -> [u8; 32] {
         sha256(&self.data())
     }
@@ -15,6 +16,7 @@ impl EmbeddedFile {
     ///
     /// Falls back to `"application/octet-stream"` for unrecognized or
     /// missing extensions.
+    #[must_use]
     pub fn mime(&self) -> &'static str {
         mime_from_path(self.path())
     }

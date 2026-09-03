@@ -1,3 +1,7 @@
+//! The two `#[derive(Embed)]` attributes with runtime consequences:
+//! `#[embark(encrypt)]`, which seals every file in the folder under one
+//! shared build-time key, and `#[embark(dev)]`, which reads from disk in
+//! debug builds instead of the compiled-in copy.
 #![cfg(all(
     feature = "std",
     feature = "derive",

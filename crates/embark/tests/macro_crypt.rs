@@ -1,3 +1,6 @@
+//! `embed_crypt!` in its default build-time-key mode, under both ciphers:
+//! the macro seals the file at build time and the emitted reconstruction
+//! function has to recover the key at runtime.
 #![cfg(all(feature = "std", feature = "derive", feature = "encryption"))]
 
 static SECRET: embark::EncryptedFile = embark::embed_crypt!("tests/fixtures/secret.txt");

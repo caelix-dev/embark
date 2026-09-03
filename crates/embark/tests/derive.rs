@@ -1,3 +1,5 @@
+//! `#[derive(Embed)]` over a fixture folder: lookup by path and iteration
+//! in sorted order, through the `Embed` trait as a downstream crate sees it.
 #![cfg(all(feature = "std", feature = "derive", feature = "deflate"))]
 use embark::Embed;
 

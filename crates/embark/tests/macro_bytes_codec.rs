@@ -1,3 +1,6 @@
+//! `embed_bytes!` with a `codec` argument, one test per codec that has to be
+//! selectable by name. Each compresses at build time and must decode back to
+//! the original file at runtime.
 #![cfg(all(feature = "std", feature = "derive"))]
 
 #[cfg(feature = "deflate")]

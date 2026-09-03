@@ -1,3 +1,6 @@
+//! `EmbeddedBytes` over hand-built entries: a `Store` entry decodes without
+//! copying, a compressed one decompresses on access, and `size` reports
+//! `None` rather than panicking on a header it cannot read.
 #![cfg(all(feature = "std", feature = "deflate"))]
 use embark::EmbeddedBytes;
 use embark_codec::compress;

@@ -1,3 +1,7 @@
+//! The manifest side of `#[derive(Embed)]`, driven by a hand-built manifest
+//! rather than the macro: `lookup` and `entries` over it, the iterator
+//! contracts `Entries` advertises, and `Manifest::new` remaining usable in a
+//! `static` initializer.
 #![cfg(all(feature = "std", feature = "deflate"))]
 use embark::{Embed, EmbeddedFile, Manifest};
 use embark_codec::compress;

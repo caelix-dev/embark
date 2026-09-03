@@ -6,10 +6,12 @@ use embark_format::{Error, Result};
 /// embedded-key mode -- the default, so plain `EncryptedFile` means
 /// `EncryptedFile<EmbeddedKey>`. See the [type-level docs](EncryptedFile)
 /// for what that means and its obfuscation-not-security caveat.
+#[derive(Debug)]
 pub struct EmbeddedKey;
 
 /// Type-state marker selecting [`EncryptedFile`]'s runtime-key mode. See
 /// the [type-level docs](EncryptedFile) for what that means.
+#[derive(Debug)]
 pub struct RuntimeKey;
 
 mod sealed {
@@ -160,6 +162,18 @@ pub struct EncryptedFile<K: KeyMode = EmbeddedKey> {
     key: K::KeySource,
 }
 
+// The key field is deliberately left out. Under [`EmbeddedKey`] it is the
+// address of the generated key-reconstruction routine, which is the one
+// thing about this handle that should not end up in a log line, and the
+// sealed entry is ciphertext nobody can read from a debug dump anyway.
+impl<K: KeyMode> core::fmt::Debug for EncryptedFile<K> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("EncryptedFile")
+            .field("entry_len", &self.entry.len())
+            .finish_non_exhaustive()
+    }
+}
+
 impl EncryptedFile<EmbeddedKey> {
     /// Builds a build-time-embedded-key handle from a sealed entry and its
     /// key-reconstruction function.
@@ -191,6 +205,7 @@ impl EncryptedFile<EmbeddedKey> {
     ///
     /// Panics only if the embedded entry is malformed -- a build-time bug,
     /// not something a caller can trigger at runtime.
+    #[must_use]
     pub fn decrypt(&self) -> Vec<u8> {
         let key = (self.key)();
         crate::decode::decode(self.entry, Some(key))
@@ -201,6 +216,12 @@ impl EncryptedFile<EmbeddedKey> {
     /// Like [`decrypt`](EncryptedFile::decrypt), but decodes the result as
     /// UTF-8 and returns a `Result` (rather than panicking) if the
     /// decrypted bytes are not valid UTF-8.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Utf8`] with the offset of the first bad byte if the
+    /// decrypted content is not UTF-8. Decryption itself cannot fail here,
+    /// for the reason [`decrypt`](EncryptedFile::decrypt) gives.
     pub fn decrypt_str(&self) -> Result<String> {
         let key = (self.key)();
         let bytes = crate::decode::decode(self.entry, Some(key))?.into_owned();
@@ -223,6 +244,7 @@ impl EncryptedFile<RuntimeKey> {
     ///     embark::EncryptedFile::with_runtime_key(&[]);
     /// f.decrypt(); // error[E0599]: no method named `decrypt` found
     /// ```
+    #[must_use]
     pub const fn with_runtime_key(entry: &'static [u8]) -> EncryptedFile<RuntimeKey> {
         EncryptedFile { entry, key: () }
     }
@@ -234,6 +256,12 @@ impl EncryptedFile<RuntimeKey> {
     /// confidentiality, as strong as the caller's own key management.
     /// Returns `Err(Error::Auth)` if `key` is wrong (AEAD authentication
     /// fails cleanly rather than returning garbage).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Auth`] if `key` does not authenticate the entry, and
+    /// [`Error::Corrupt`] or [`Error::Truncated`] if the compiled-in entry is
+    /// damaged.
     pub fn decrypt_with(&self, key: &[u8; 32]) -> Result<Vec<u8>> {
         Ok(crate::decode::decode(self.entry, Some(*key))?.into_owned())
     }
