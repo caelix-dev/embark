@@ -1,5 +1,6 @@
 extern crate alloc;
 use alloc::vec::Vec;
+#[cfg(feature = "dec")]
 use embark_format::Error;
 
 // --- shared varint (Snappy uses little-endian base-128 for the preamble) ---

@@ -1,6 +1,8 @@
 extern crate alloc;
 use alloc::vec::Vec;
-use embark_format::{CodecId, Error};
+use embark_format::CodecId;
+#[cfg(feature = "dec")]
+use embark_format::Error;
 
 #[cfg(feature = "enc")]
 pub fn compress(id: CodecId, input: &[u8]) -> Vec<u8> {

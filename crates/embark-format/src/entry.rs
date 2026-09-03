@@ -1,5 +1,7 @@
-use crate::{CodecId, CryptoId, Error};
-#[cfg(feature = "alloc")]
+#[cfg(feature = "dec")]
+use crate::Error;
+use crate::{CodecId, CryptoId};
+#[cfg(feature = "enc")]
 use alloc::vec::Vec;
 
 pub struct Header {

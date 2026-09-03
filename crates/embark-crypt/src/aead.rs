@@ -1,9 +1,12 @@
+#[cfg(feature = "dec")]
 use embark_format::Error;
 extern crate alloc;
 use alloc::vec::Vec;
 
 use chacha20poly1305::aead::{AeadInPlace, KeyInit};
-use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce, Tag};
+#[cfg(feature = "dec")]
+use chacha20poly1305::Tag;
+use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 
 #[cfg(feature = "enc")]
 pub fn seal(key: &[u8; 32], nonce: &[u8; 12], plain: &[u8]) -> (Vec<u8>, [u8; 16]) {
