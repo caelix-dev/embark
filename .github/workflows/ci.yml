@@ -32,7 +32,7 @@ jobs:
           cargo build -p embark-format --no-default-features --features "alloc enc dec" --target thumbv7em-none-eabihf
           cargo build -p embark-codec  --no-default-features --features "alloc dec deflate lz4 snappy" --target thumbv7em-none-eabihf
           cargo build -p embark-crypt  --no-default-features --features "alloc dec" --target thumbv7em-none-eabihf
-          cargo build -p embark        --no-default-features --features "alloc deflate lz4 snappy" --target thumbv7em-none-eabihf
+          cargo build -p embark        --no-default-features --features "alloc deflate lz4 snappy encryption metadata" --target thumbv7em-none-eabihf
 
   interop:
     runs-on: ubuntu-latest
