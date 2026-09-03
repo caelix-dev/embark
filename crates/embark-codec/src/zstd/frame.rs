@@ -5,7 +5,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use super::block;
-use super::matcher::{HashChain, Match, Params};
+use super::matcher::{HashChain, History, Match, Params};
 use super::optimal::{self, Prices};
 
 const MAGIC: u32 = 0xfd2f_b528;
@@ -27,6 +27,23 @@ const MAX_PARSED: usize = u32::MAX as usize;
 /// worse — only slower to encode, which is a build-time cost.
 const PASSES: usize = 4;
 
+/// Smallest span the frame is willing to cut a segment down to.
+///
+/// A segment is a run of blocks the encoder can build knowing nothing about
+/// what came before it, so it is both what threads divide and what costs a
+/// little ratio: each one re-establishes its own repeat history and rebuilds
+/// its own match chain over the window behind it. One mebibyte is where
+/// that rebuild is comfortably smaller than the search it enables.
+const MIN_SEGMENT: usize = 1 << 20;
+
+/// How much memory the segments of one frame may hold at once.
+///
+/// Every segment that runs concurrently carries its own hash table and
+/// chain, both sized by the window, so segment count is what decides the
+/// encoder's peak footprint. This caps it for the assets large enough to
+/// have many segments.
+const SEGMENT_MEMORY: usize = 384 << 20;
+
 /// Encode `input` as one Zstandard frame.
 pub(super) fn encode(input: &[u8]) -> Vec<u8> {
     let len = input.len();
@@ -41,17 +58,90 @@ pub(super) fn encode(input: &[u8]) -> Vec<u8> {
     }
 
     let params = Params::for_input(len, window);
+    let segments = segments(len, window, &params);
+    for body in crate::parallel::map(&segments, |&(start, stop)| {
+        encode_segment(input, start, stop, window, &params, stop == len)
+    }) {
+        out.extend_from_slice(&body);
+    }
+    out
+}
+
+/// Cut the frame into runs of blocks that can each be built on their own.
+///
+/// The split is a function of the input alone, never of how many cores the
+/// build machine has. Cutting here costs a little ratio, so a build on a
+/// laptop and a build on a CI runner have to cut in the same places or they
+/// would not produce the same bytes. Inputs of a mebibyte or less come back
+/// as one segment and are encoded exactly as they were before segments
+/// existed.
+fn segments(len: usize, window: usize, params: &Params) -> Vec<(usize, usize)> {
+    let per_segment = HashChain::footprint(len, window, params.hash_bits);
+    let affordable = (SEGMENT_MEMORY / per_segment.max(1)).max(1);
+    let wanted = (len / MIN_SEGMENT).clamp(1, affordable);
+
+    // Segment boundaries are block boundaries: a block is the smallest thing
+    // the frame can write, and one straddling a boundary would have to be
+    // built twice.
+    let blocks = len.div_ceil(block::MAX_BLOCK);
+    let per = blocks.div_ceil(wanted);
+    (0..blocks)
+        .step_by(per)
+        .map(|first| {
+            let start = first * block::MAX_BLOCK;
+            (start, (start + per * block::MAX_BLOCK).min(len))
+        })
+        .collect()
+}
+
+/// Encode `input[start..stop]` as a run of blocks, standing on its own.
+///
+/// The chain is filled from one window before `start`, which is as far back
+/// as anything in this range can match, so it holds every candidate the
+/// sequential encoder's chain would have offered here, in the same order.
+/// The repeat history cannot be recovered that way -- it is the previous
+/// segment's parting state, not a function of the input -- so this one names
+/// its opening offsets outright until it has built a history of its own.
+fn encode_segment(
+    input: &[u8],
+    start: usize,
+    stop: usize,
+    window: usize,
+    params: &Params,
+    tail: bool,
+) -> Vec<u8> {
+    let len = input.len();
+    let mut out = Vec::with_capacity((stop - start) / 3 + 16);
     let mut chain = HashChain::new(len, window, params.hash_bits);
-    let mut repeats = [1usize, 4, 8];
-    let mut at = 0usize;
-    while at < len {
-        let end = (at + block::MAX_BLOCK).min(len);
+    chain.start_at(start.saturating_sub(window));
+    chain.fill_to(input, start);
+
+    let mut history = History::fresh();
+    let mut at = start;
+    while at < stop {
+        let end = (at + block::MAX_BLOCK).min(stop);
         let parses = if len <= MAX_PARSED {
-            parse_block(input, at, end, &mut chain, &params, window - 1, repeats)
+            parse_block(
+                input,
+                at,
+                end,
+                &mut chain,
+                params,
+                window - 1,
+                history.offsets(),
+            )
         } else {
             vec![Vec::new()]
         };
-        block::write_one(&mut out, input, at, end, &parses, &mut repeats, end == len);
+        block::write_one(
+            &mut out,
+            input,
+            at,
+            end,
+            &parses,
+            &mut history,
+            tail && end == stop,
+        );
         at = end;
     }
     out

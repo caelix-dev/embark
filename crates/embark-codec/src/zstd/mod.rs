@@ -96,6 +96,27 @@ mod tests {
         assert_eq!(decompress(&c, data.len()).unwrap(), data);
     }
 
+    // Past a mebibyte the frame is cut into segments that are encoded
+    // without reference to one another, which means each one has to rebuild
+    // the decoder's repeat-offset history from nothing. Data this repetitive
+    // is coded almost entirely in repeat offsets, so an opening sequence that
+    // named one it had not established would desynchronize the decoder from
+    // the second segment on -- and would still produce a frame that looks
+    // structurally fine.
+    #[test]
+    fn roundtrip_across_segment_boundaries() {
+        let unit = b"embark: a line repeated until the offsets are all repeats.
+";
+        let data: Vec<u8> = unit
+            .iter()
+            .copied()
+            .cycle()
+            .take(5 * (1 << 20) + 7)
+            .collect();
+        let c = compress(&data);
+        assert_eq!(decompress(&c, data.len()).unwrap(), data);
+    }
+
     #[test]
     fn roundtrip_incompressible_random() {
         // A small xorshift PRNG keeps this test dependency-free.

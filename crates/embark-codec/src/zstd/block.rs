@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 
 use super::huffman;
-use super::matcher::{self, Match};
+use super::matcher::{History, Match};
 use super::sequences::{self, Coded};
 
 /// Largest decompressed size of one block.
@@ -28,7 +28,7 @@ pub(super) fn write_one(
     start: usize,
     end: usize,
     parses: &[Vec<Match>],
-    repeats: &mut [usize; 3],
+    history: &mut History,
     last: bool,
 ) {
     let raw = &input[start..end];
@@ -40,9 +40,9 @@ pub(super) fn write_one(
         return;
     }
 
-    let mut best: Option<(Vec<u8>, [usize; 3])> = None;
+    let mut best: Option<(Vec<u8>, History)> = None;
     for parse in parses {
-        let mut trial = *repeats;
+        let mut trial = *history;
         let body = compressed_body(input, start, end, parse, &mut trial);
         if best
             .as_ref()
@@ -59,7 +59,7 @@ pub(super) fn write_one(
         Some((body, trial)) if body.len() < raw.len() => {
             write_header(out, body.len(), COMPRESSED, last);
             out.extend_from_slice(&body);
-            *repeats = trial;
+            *history = trial;
         }
         _ => {
             write_header(out, raw.len(), RAW, last);
@@ -79,7 +79,7 @@ fn compressed_body(
     start: usize,
     end: usize,
     parse: &[Match],
-    repeats: &mut [usize; 3],
+    history: &mut History,
 ) -> Vec<u8> {
     let mut literals = Vec::new();
     let mut coded = Vec::with_capacity(parse.len());
@@ -87,8 +87,7 @@ fn compressed_body(
     for seq in parse {
         literals.extend_from_slice(&input[at..at + seq.literal_len]);
         at += seq.literal_len + seq.match_len;
-        let (offset, advanced) = matcher::encode_offset(*repeats, seq.offset, seq.literal_len);
-        *repeats = advanced;
+        let offset = history.encode(seq.offset, seq.literal_len);
         coded.push(Coded::new(
             seq.literal_len as u32,
             seq.match_len as u32,

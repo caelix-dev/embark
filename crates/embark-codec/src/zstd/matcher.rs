@@ -15,6 +15,9 @@ pub(super) const MIN_REPEAT_MATCH: usize = MIN_SHORT_MATCH;
 pub(super) const MAX_MATCH: usize = 1 << 16;
 /// Empty slot in the hash tables.
 const NONE: u32 = u32::MAX;
+/// Widest the three-byte table gets. Short matches are only worth taking
+/// when they are close, so more keys than this buys nothing.
+const SHORT_BITS_MAX: u32 = 17;
 
 /// One parsed sequence: literals to copy out, then a match to copy back.
 #[derive(Clone, Copy)]
@@ -81,12 +84,20 @@ pub(super) struct HashChain {
 }
 
 impl HashChain {
+    /// Bytes one of these will hold, so a caller running several at once can
+    /// tell how many it can afford.
+    pub(super) fn footprint(len: usize, window: usize, hash_bits: u32) -> usize {
+        let chain = window.min(len).max(1).next_power_of_two();
+        let short = 1usize << hash_bits.min(SHORT_BITS_MAX);
+        ((1usize << hash_bits) + chain + short) * size_of::<u32>()
+    }
+
     pub(super) fn new(len: usize, window: usize, hash_bits: u32) -> Self {
         // The chain only has to remember one window of positions: a slot can
         // be reused once the position that holds it has dropped out of
         // reach, which is exactly when the window has moved past it.
         let chain_size = window.min(len).max(1).next_power_of_two();
-        let short_bits = hash_bits.min(17);
+        let short_bits = hash_bits.min(SHORT_BITS_MAX);
         Self {
             head: vec![NONE; 1usize << hash_bits],
             chain: vec![NONE; chain_size],
@@ -108,6 +119,18 @@ impl HashChain {
     fn short_hash(&self, input: &[u8], pos: usize) -> usize {
         let word = u32::from_le_bytes([input[pos], input[pos + 1], input[pos + 2], input[pos + 3]]);
         ((word & 0x00ff_ffff).wrapping_mul(2_654_435_761) >> (32 - self.short_bits)) as usize
+    }
+
+    /// Treat everything below `from` as already inserted.
+    ///
+    /// A search at `pos` only walks candidates at or above `pos - window`,
+    /// so a chain filled from one window before the first position it will
+    /// be asked about holds every entry such a walk can reach, and holds
+    /// them in the same order as one filled from the start of the input.
+    /// That is what lets a segment build its own chain instead of
+    /// inheriting one.
+    pub(super) fn start_at(&mut self, from: usize) {
+        self.filled = from;
     }
 
     /// Insert every position below `upto` that is not in yet.
@@ -237,6 +260,53 @@ pub(super) fn encode_offset(
         _ => [offset, repeats[0], repeats[1]],
     };
     (value as u32, advanced)
+}
+
+/// The repeat-offset state a segment carries while it serializes, and how
+/// many of its opening sequences still have to name their offsets outright.
+///
+/// A segment boundary is the one place the encoder cannot know what the
+/// decoder's history holds: the segment before it settled that, and the two
+/// are built independently so that they can be built at the same time.
+/// Naming an offset outright is always legal -- it is what every offset that
+/// is not a repeat already does -- and costs only the few bits a repeat code
+/// would have saved. Three of them leave the history determined by this
+/// segment alone, after which the normal rules take over.
+#[derive(Clone, Copy)]
+pub(super) struct History {
+    offsets: [usize; 3],
+    outright: u32,
+}
+
+impl History {
+    /// What a segment starts from: the offsets the format opens every frame
+    /// with, and three sequences owed an outright offset.
+    pub(super) fn fresh() -> Self {
+        Self {
+            offsets: [1, 4, 8],
+            // Three, because that is how many offsets the history holds.
+            outright: 3,
+        }
+    }
+
+    /// The three offsets a repeat code can name from here, which is what
+    /// the parser prices against.
+    pub(super) fn offsets(&self) -> [usize; 3] {
+        self.offsets
+    }
+
+    /// Code `offset` for a sequence with `literal_len` literals in front of
+    /// it, and advance.
+    pub(super) fn encode(&mut self, offset: usize, literal_len: usize) -> u32 {
+        if self.outright > 0 {
+            self.outright -= 1;
+            self.offsets = [offset, self.offsets[0], self.offsets[1]];
+            return (offset + 3) as u32;
+        }
+        let (value, advanced) = encode_offset(self.offsets, offset, literal_len);
+        self.offsets = advanced;
+        value
+    }
 }
 
 /// The offsets that a repeat code can name from this history, cheapest
