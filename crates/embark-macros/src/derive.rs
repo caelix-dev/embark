@@ -35,7 +35,6 @@ pub fn expand(input: syn::DeriveInput) -> proc_macro2::TokenStream {
     } else {
         None
     };
-    let mask = key_material.map(|_| embark_crypt::gen_key_nonce().0);
 
     let mut manifest_items = Vec::new();
     for (rel, abs) in &files {
@@ -55,12 +54,17 @@ pub fn expand(input: syn::DeriveInput) -> proc_macro2::TokenStream {
 
     // get()/iter() bodies. Dev-mode overrides get() in debug builds.
     let dev = cfg.dev;
-    let get_body = if let (Some(key), Some(mask)) = (key_material, mask) {
-        let masked = array32(&embark_crypt::xor32(&key, &mask));
-        let mask_lit = array32(&mask);
-        quote!(::embark::lookup_encrypted(MANIFEST, path, #masked, #mask_lit))
+    // When encrypting, emit ONE per-build-randomized key-reconstruction fn for
+    // the whole derive (all files share the key) and hand its pointer to
+    // `lookup_encrypted`. The fn item is spliced into the `const _` block below.
+    let (recon_fn, get_body) = if let Some(key) = key_material {
+        let (recon_fn, recon_name) = crate::obfuscate::emit_key_recon(key);
+        (
+            recon_fn,
+            quote!(::embark::lookup_encrypted(MANIFEST, path, #recon_name)),
+        )
     } else {
-        quote!(::embark::lookup(MANIFEST, path))
+        (quote!(), quote!(::embark::lookup(MANIFEST, path)))
     };
 
     // With #[embark(dev)] the #[cfg(debug_assertions)] branch below always
@@ -85,6 +89,7 @@ pub fn expand(input: syn::DeriveInput) -> proc_macro2::TokenStream {
     quote! {
         const _: () = {
             static MANIFEST: &[::embark::Manifest] = &[ #(#manifest_items),* ];
+            #recon_fn
             impl ::embark::Embed for #name {
                 #unreachable_allow
                 fn get(path: &str) -> ::core::option::Option<::embark::EmbeddedFile> {
@@ -129,11 +134,6 @@ fn included(cfg: &Config, rel: &str) -> bool {
         return true;
     }
     cfg.include.iter().any(|p| glob::matches(p, rel))
-}
-
-fn array32(bytes: &[u8; 32]) -> proc_macro2::TokenStream {
-    let elems = bytes.iter().map(|b| quote!(#b));
-    quote!([#(#elems),*])
 }
 
 fn parse_config(input: &syn::DeriveInput) -> Config {

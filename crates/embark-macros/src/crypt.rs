@@ -1,4 +1,4 @@
-use embark_crypt::{gen_key_nonce, seal, xor32};
+use embark_crypt::{gen_key_nonce, seal};
 use embark_format::{write_entry, CodecId, CryptoId};
 
 pub(crate) enum KeyMode {
@@ -8,7 +8,9 @@ pub(crate) enum KeyMode {
 
 pub(crate) struct Sealed {
     pub entry: Vec<u8>,
-    pub masked_mask: Option<([u8; 32], [u8; 32])>,
+    // The build-time key for embedded-key mode, from which the caller emits a
+    // randomized reconstruction function; `None` in runtime-key mode.
+    pub key: Option<[u8; 32]>,
 }
 
 pub(crate) fn seal_file(data: &[u8], codec: CodecId, crypto: CryptoId, mode: KeyMode) -> Sealed {
@@ -20,11 +22,10 @@ pub(crate) fn seal_file(data: &[u8], codec: CodecId, crypto: CryptoId, mode: Key
         (CodecId::Store, data.to_vec())
     };
 
-    let (key, nonce, masked_mask) = match mode {
+    let (key, nonce, embedded_key) = match mode {
         KeyMode::BuildTime => {
             let (key, nonce) = gen_key_nonce();
-            let (mask, _) = gen_key_nonce();
-            (key, nonce, Some((xor32(&key, &mask), mask)))
+            (key, nonce, Some(key))
         }
         KeyMode::Runtime => {
             let key = env_key();
@@ -43,7 +44,10 @@ pub(crate) fn seal_file(data: &[u8], codec: CodecId, crypto: CryptoId, mode: Key
         Some((nonce, tag)),
         &ct,
     );
-    Sealed { entry, masked_mask }
+    Sealed {
+        entry,
+        key: embedded_key,
+    }
 }
 
 fn env_key() -> [u8; 32] {
@@ -65,8 +69,8 @@ fn env_key() -> [u8; 32] {
 }
 
 // Used by derive(Embed) with #[embark(encrypt)]: every file in the folder is
-// sealed under one caller-supplied build-time key (obfuscated in the manifest
-// via masked/mask emitted by the derive). Returns just the entry bytes.
+// sealed under one shared build-time key (obfuscated via a per-build
+// reconstruction function the derive emits). Returns just the entry bytes.
 pub(crate) fn seal_with_key(
     data: &[u8],
     codec: CodecId,
