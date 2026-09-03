@@ -3,6 +3,7 @@ use embark_format::{CodecId, CryptoId};
 use quote::quote;
 use std::path::Path;
 use syn::LitStr;
+use syn::spanned::Spanned;
 
 struct Config {
     // The literal, not its value: every folder-related diagnostic below is
@@ -18,6 +19,7 @@ struct Config {
 }
 
 pub fn expand(input: &syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
+    check_shape(input)?;
     let name = &input.ident;
     let cfg = parse_config(input)?;
     let folder_span = cfg.folder.span();
@@ -131,6 +133,37 @@ pub fn error_with_stub(input: &syn::DeriveInput, err: &syn::Error) -> proc_macro
                 }
             }
         };
+    }
+}
+
+/// `#[derive(Embed)]` ties a folder to a type name, so the type itself has
+/// nothing to carry: the documented contract is a non-generic unit struct.
+/// Anything else expands to an impl that does not mean what it says.
+fn check_shape(input: &syn::DeriveInput) -> syn::Result<()> {
+    const EXPECTED: &str = "#[derive(Embed)] expects a unit struct, e.g. `struct Assets;`";
+
+    if !input.generics.params.is_empty() {
+        return Err(syn::Error::new(
+            input.generics.span(),
+            format!("{EXPECTED}; generic parameters are not supported"),
+        ));
+    }
+    match &input.data {
+        syn::Data::Struct(s) => match &s.fields {
+            syn::Fields::Unit => Ok(()),
+            fields => Err(syn::Error::new(
+                fields.span(),
+                format!("{EXPECTED}; this struct has fields"),
+            )),
+        },
+        syn::Data::Enum(e) => Err(syn::Error::new(
+            e.enum_token.span,
+            format!("{EXPECTED}; enums are not supported"),
+        )),
+        syn::Data::Union(u) => Err(syn::Error::new(
+            u.union_token.span,
+            format!("{EXPECTED}; unions are not supported"),
+        )),
     }
 }
 
