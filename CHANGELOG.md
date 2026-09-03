@@ -63,11 +63,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ruzstd` implements only its `Fastest` level, which is well short of what
   the format allows: the frames it writes advertise a 128 KiB window, so on
   anything larger no match can reach across the file. The new encoder writes
-  windows up to 8 MiB, searches a hash chain lazily, uses the repeat offsets,
-  Huffman-codes the literals and builds FSE tables per block. On a four-file
-  corpus it lands 19% to 29% below what `ruzstd` produced, and below what
-  real `zstd -3` produces. Decoding is unchanged and still goes through
-  `ruzstd`, since that is the half that ships in a consumer's binary.
+  windows up to 8 MiB, parses each block by shortest path over a price model
+  fitted to that block, uses the repeat offsets, Huffman-codes the literals
+  and fits FSE tables per block. On a four-file corpus it lands 21% to 33%
+  below what `ruzstd` produced, and within 1% of what real `zstd -19`
+  produces. Decoding is unchanged and still goes through `ruzstd`, since that
+  is the half that ships in a consumer's binary. Encoding costs roughly 5 to
+  70 times what `ruzstd` charged, which is a build-time cost only.
 - Minimum supported Rust version raised from 1.74 to **1.87**. The 1.74
   claim was never true: the dependency graph has required a newer compiler
   since before it was written, and CI never caught it. 1.87 is the measured
