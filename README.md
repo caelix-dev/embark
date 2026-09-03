@@ -64,12 +64,14 @@ Runnable versions of all four patterns live in
 
 **A build-time encryption key is obfuscation, not encryption, against a
 determined reverser.** `embed_crypt!` (with no `key = runtime` argument)
-generates a ChaCha20-Poly1305 key at compile time and masks it into the
-binary next to the ciphertext, so the secret never appears as a
-plaintext string a `strings` scan would find. That's enough to stop casual
-inspection, but anyone who can run (or disassemble) the binary's own
-unmasking code can recover the key — the key and the means to unmask it
-ship in the same artifact.
+generates a key at compile time — ChaCha20-Poly1305 by default, or
+AES-256-GCM with `cipher = aes` — and masks it into the binary next to the
+ciphertext, so the secret never appears as a plaintext string a `strings`
+scan would find. That's enough to stop casual inspection, but anyone who
+can run (or disassemble) the binary's own unmasking code can recover the
+key — the key and the means to unmask it ship in the same artifact. This
+distinction is about the key's provenance, not the cipher: it applies
+identically to both ciphers, `cipher = aes` included.
 
 For real confidentiality — a secret the binary itself should not be able to
 reveal without external input — use `key = runtime`:
@@ -101,6 +103,7 @@ it the embedded data is unrecoverable.
 | `zstd`       | no      | reserved for Phase 2 (Zstd) |
 | `lzma`       | no      | reserved for Phase 3 |
 | `encryption` | no      | `embed_crypt!`, `EncryptedFile` (ChaCha20-Poly1305) |
+| `aes`        | no      | AES-256-GCM cipher for `embed_crypt!(cipher = aes)` |
 | `metadata`   | no      | per-entry metadata helpers (e.g. content hashing) |
 
 For `no_std` targets, build with `--no-default-features` and select `alloc`
