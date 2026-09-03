@@ -20,7 +20,12 @@ pub fn open(key: &[u8; 32], nonce: &[u8; 12], ct: &[u8], tag: &[u8; 16]) -> Resu
     let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
     let mut buf = ct.to_vec();
     cipher
-        .decrypt_in_place_detached(Nonce::from_slice(nonce), b"", &mut buf, Tag::from_slice(tag))
+        .decrypt_in_place_detached(
+            Nonce::from_slice(nonce),
+            b"",
+            &mut buf,
+            Tag::from_slice(tag),
+        )
         .map_err(|_| Error::Auth)?;
     Ok(buf)
 }
@@ -43,13 +48,19 @@ mod tests {
     #[test]
     fn wrong_key_is_auth_error() {
         let (ct, tag) = seal(&[1u8; 32], &[2u8; 12], b"secret");
-        assert_eq!(open(&[9u8; 32], &[2u8; 12], &ct, &tag), Err(embark_format::Error::Auth));
+        assert_eq!(
+            open(&[9u8; 32], &[2u8; 12], &ct, &tag),
+            Err(embark_format::Error::Auth)
+        );
     }
 
     #[test]
     fn tampered_ciphertext_is_auth_error() {
         let (mut ct, tag) = seal(&[1u8; 32], &[2u8; 12], b"secret");
         ct[0] ^= 0xff;
-        assert_eq!(open(&[1u8; 32], &[2u8; 12], &ct, &tag), Err(embark_format::Error::Auth));
+        assert_eq!(
+            open(&[1u8; 32], &[2u8; 12], &ct, &tag),
+            Err(embark_format::Error::Auth)
+        );
     }
 }
