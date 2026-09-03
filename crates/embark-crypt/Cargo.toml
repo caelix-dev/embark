@@ -20,8 +20,14 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 embark-format.workspace = true
 chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
-aes-gcm = { version = "0.10", default-features = false, features = ["alloc", "aes"], optional = true }
+aes-gcm = { version = "0.10", default-features = false, features = ["alloc", "aes", "zeroize"], optional = true }
+# Not named in the source: pulled in only to turn on `aes/zeroize`, which
+# wipes the AES round-key schedule on drop. The first eight words of an
+# AES-256 schedule are the key itself, and `aes-gcm` has no feature that
+# forwards to it.
+aes = { version = "0.8", default-features = false, features = ["zeroize"], optional = true }
 getrandom = { version = "0.3", optional = true }
+zeroize = { version = "1.9", default-features = false, features = ["alloc"] }
 
 [features]
 default = []
@@ -29,4 +35,4 @@ alloc = ["embark-format/alloc"]
 enc = ["alloc", "embark-format/enc", "std", "dep:getrandom"]
 dec = ["alloc", "embark-format/dec"]
 std = []
-aes = ["dep:aes-gcm"]
+aes = ["dep:aes-gcm", "dep:aes"]

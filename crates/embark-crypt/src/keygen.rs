@@ -1,9 +1,18 @@
+use zeroize::Zeroizing;
+
+/// XOR two 32-byte blocks, the primitive behind build-time key obfuscation:
+/// a key masked at build time is recovered by XOR-ing the mask back in.
+///
+/// The scratch block is wiped when this returns. The value handed back is a
+/// plain `[u8; 32]` the caller owns, and this crate cannot wipe that copy --
+/// wrap it in [`Zeroizing`](zeroize::Zeroizing) at the call site if it holds
+/// a real secret.
 pub fn xor32(a: &[u8; 32], b: &[u8; 32]) -> [u8; 32] {
-    let mut out = [0u8; 32];
+    let mut out = Zeroizing::new([0u8; 32]);
     for i in 0..32 {
         out[i] = a[i] ^ b[i];
     }
-    out
+    *out
 }
 
 /// Draws a fresh key and nonce for one embedded entry from the operating
@@ -15,6 +24,10 @@ pub fn xor32(a: &[u8; 32], b: &[u8; 32]) -> [u8; 32] {
 /// lets an attacker invert its output function on the published nonce, recover
 /// the generator state and replay the key.
 ///
+/// The key is drawn into a wiped scratch buffer, but the returned `[u8; 32]`
+/// is a copy this crate no longer owns; keeping it out of memory afterwards is
+/// the caller's job.
+///
 /// # Panics
 ///
 /// Panics if the operating system generator is unavailable. This runs at build
@@ -22,11 +35,11 @@ pub fn xor32(a: &[u8; 32], b: &[u8; 32]) -> [u8; 32] {
 /// weaker source would silently produce a guessable key.
 #[cfg(feature = "enc")]
 pub fn gen_key_nonce() -> ([u8; 32], [u8; 12]) {
-    let mut key = [0u8; 32];
+    let mut key = Zeroizing::new([0u8; 32]);
     let mut nonce = [0u8; 12];
-    fill_from_os(&mut key);
+    fill_from_os(&mut *key);
     fill_from_os(&mut nonce);
-    (key, nonce)
+    (*key, nonce)
 }
 
 #[cfg(feature = "enc")]

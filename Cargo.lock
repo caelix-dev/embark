@@ -27,6 +27,7 @@ dependencies = [
  "cfg-if",
  "cipher",
  "cpufeatures",
+ "zeroize",
 ]
 
 [[package]]
@@ -41,6 +42,7 @@ dependencies = [
  "ctr",
  "ghash",
  "subtle",
+ "zeroize",
 ]
 
 [[package]]
@@ -136,10 +138,12 @@ dependencies = [
 name = "embark-crypt"
 version = "0.1.0"
 dependencies = [
+ "aes",
  "aes-gcm",
  "chacha20poly1305",
  "embark-format",
  "getrandom",
+ "zeroize",
 ]
 
 [[package]]
