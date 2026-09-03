@@ -42,6 +42,13 @@ lzma = ["embark-codec/lzma"]
 # crate via `embark-macros?/aes`, so `cipher = aes` is only accepted when
 # `embark` itself has the AES-256-GCM decoder compiled in.
 aes = ["embark-crypt/aes"]
+# Lets the build-time encoder use more than one thread. Forwarded from the
+# consuming `embark` crate, which enables it by default. This crate is a
+# proc macro, so the copy of `embark-codec` it turns this on for is the one
+# compiled for the build machine; resolver 3 keeps that copy's features away
+# from the consumer's target, where the decoder lives. `EMBARK_ENCODE_THREADS`
+# caps or disables it for one build without touching any manifest.
+parallel-encode = ["embark-codec/parallel-encode"]
 
 [lints]
 workspace = true

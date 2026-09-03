@@ -50,7 +50,8 @@ pub(crate) fn seal_file(
     // compressed payload. Only the compression stage is verified: a
     // decrypt-then-decompress round trip would test the AEAD crates instead,
     // and there is no key to decrypt with in `KeyMode::Runtime` anyway.
-    let (codec, compressed) = build::compress_verified(codec, data, shown, span)?;
+    let (codec, compressed) =
+        build::compress_verified(codec, data, shown).map_err(build::at(span))?;
 
     let (key, nonce, embedded_key) = match mode {
         KeyMode::BuildTime => {
@@ -111,9 +112,8 @@ pub(crate) fn seal_with_key(
     crypto: CryptoId,
     key: [u8; 32],
     shown: &str,
-    span: Span,
-) -> syn::Result<Vec<u8>> {
-    let (codec, compressed) = build::compress_verified(codec, data, shown, span)?;
+) -> Result<Vec<u8>, String> {
+    let (codec, compressed) = build::compress_verified(codec, data, shown)?;
     let (_, nonce) = gen_key_nonce(); // fresh per-file nonce
     let (ct, tag) = seal(crypto, &key, &nonce, &compressed);
     let mut entry = Vec::new();

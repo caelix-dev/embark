@@ -1,5 +1,10 @@
 //! The build-time encoder's thread budget.
 //!
+//! Public because the proc macro sits above the codecs and has its own
+//! independent work -- one derive compresses every file in a folder -- and
+//! the budget only bounds the machine if all three levels draw on the same
+//! one. Nothing here is reachable from `dec`.
+//!
 //! Compression runs once, on the machine doing the build, inside a proc
 //! macro. Decompression runs in every consumer's shipped binary, and never
 //! reaches this module. So the encoder is free to use every core the build
@@ -73,6 +78,9 @@ mod imp {
 
     /// Apply `f` to every item, in parallel where the budget allows.
     ///
+    /// Without the `parallel-encode` feature this is `items.iter().map(f)`
+    /// and nothing is spawned, so callers need no second code path.
+    ///
     /// Results come back in the order of `items` however the work was
     /// scheduled, so nothing a caller decides from them -- which codec was
     /// smallest, which entry goes where in a manifest -- can depend on how
@@ -81,7 +89,14 @@ mod imp {
     /// Items are claimed one at a time rather than dealt out up front:
     /// assets differ in size by orders of magnitude, and a static split
     /// leaves one worker holding the only large file while the rest idle.
-    pub(crate) fn map<T, R, F>(items: &[T], f: F) -> Vec<R>
+    ///
+    /// # Panics
+    ///
+    /// Propagates a panic from `f` once the other workers have stopped,
+    /// which is the same outcome the sequential form gives and the one a
+    /// proc macro wants: an encoder that panicked has no partial result
+    /// worth keeping.
+    pub fn map<T, R, F>(items: &[T], f: F) -> Vec<R>
     where
         T: Sync,
         R: Send,
@@ -132,7 +147,11 @@ mod imp {
 mod imp {
     use alloc::vec::Vec;
 
-    pub(crate) fn map<T, R, F>(items: &[T], f: F) -> Vec<R>
+    /// Apply `f` to every item, in order.
+    ///
+    /// The shape the `parallel-encode` build offers, without the feature:
+    /// callers are written once and get whichever this build compiled.
+    pub fn map<T, R, F>(items: &[T], f: F) -> Vec<R>
     where
         T: Sync,
         R: Send,
@@ -142,4 +161,4 @@ mod imp {
     }
 }
 
-pub(crate) use imp::map;
+pub use imp::map;

@@ -36,7 +36,7 @@ embark-crypt = { workspace = true, features = ["enc"] }
 trybuild = "1.0"
 
 [features]
-default = ["std", "derive", "deflate"]
+default = ["std", "derive", "parallel-encode", "deflate"]
 std = ["alloc", "embark-format/std"]
 # No-op, kept so existing `default-features = false, features = ["alloc"]`
 # manifests keep resolving. The crate always links `alloc`.
@@ -50,6 +50,13 @@ lzma = ["embark-codec/lzma", "embark-macros?/lzma"]
 encryption = ["dep:embark-crypt", "embark-crypt/dec"]
 aes = ["encryption", "embark-crypt/aes", "embark-macros?/aes"]
 metadata = []
+# Build-time only: lets the macros compress with more than one thread. It is
+# deliberately not forwarded to this crate's own `embark-codec`, which is the
+# copy compiled for the consumer's target and holds only the decoder; nothing
+# here adds a thread, or `std`, to a shipped binary. Set
+# `EMBARK_ENCODE_THREADS=1` to turn it off for a build without editing a
+# manifest.
+parallel-encode = ["embark-macros?/parallel-encode"]
 
 [[example]]
 name = "single_file"

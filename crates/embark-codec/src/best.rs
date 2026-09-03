@@ -143,7 +143,7 @@ pub fn compress_best_in(tier: AutoTier, input: &[u8]) -> (CodecId, Vec<u8>) {
         .copied()
         .filter(|&(id, _)| contains(tier, id))
         .collect();
-    crate::threads::map(&candidates, |&(id, compress)| (id, compress(input)))
+    crate::parallel::map(&candidates, |&(id, compress)| (id, compress(input)))
         .into_iter()
         .min_by_key(|(_, out)| out.len())
         .filter(|(_, out)| out.len() < input.len())

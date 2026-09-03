@@ -88,8 +88,8 @@ fn expand_bytes(args: args::Args) -> syn::Result<proc_macro2::TokenStream> {
             Ok(quote!(::core::include_bytes!(#abs)))
         }
         Some(codec) => {
-            let data = build::read(&path, &shown, span)?;
-            let entry = build::build_entry(codec, &data, &shown, span)?;
+            let data = build::read(&path, &shown).map_err(build::at(span))?;
+            let entry = build::build_entry(codec, &data, &shown).map_err(build::at(span))?;
             let lit = build::bytes_literal(&entry);
             let track = build::track_file(&path, span)?;
             Ok(quote! {
@@ -171,7 +171,7 @@ fn expand_crypt(parsed: crypt_args::CryptArgs) -> syn::Result<proc_macro2::Token
     let span = parsed.path.span();
     let shown = parsed.path.value();
     let path = build::resolve(&parsed.path);
-    let data = build::read(&path, &shown, span)?;
+    let data = build::read(&path, &shown).map_err(build::at(span))?;
     let track = build::track_file(&path, span)?;
     let codec = parsed.codec();
     let crypto = parsed.crypto_id();

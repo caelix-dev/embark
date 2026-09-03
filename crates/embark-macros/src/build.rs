@@ -17,17 +17,25 @@ pub(crate) fn resolve(rel: &LitStr) -> PathBuf {
 // deliberately kept out of the message: it embeds the build machine's
 // CARGO_MANIFEST_DIR, and a not-found `io::Error` renders in the build
 // machine's locale, so neither reproduces across machines.
-fn read_error(err: &std::io::Error, shown: &str, span: Span) -> syn::Error {
-    let msg = if err.kind() == std::io::ErrorKind::NotFound {
+fn read_error(err: &std::io::Error, shown: &str) -> String {
+    if err.kind() == std::io::ErrorKind::NotFound {
         format!("embark: file not found: `{shown}` (resolved relative to CARGO_MANIFEST_DIR)")
     } else {
         format!("embark: cannot read `{shown}`: {err}")
-    };
-    syn::Error::new(span, msg)
+    }
 }
 
-pub(crate) fn read(path: &Path, shown: &str, span: Span) -> syn::Result<Vec<u8>> {
-    std::fs::read(path).map_err(|e| read_error(&e, shown, span))
+/// Give a message from one of the span-free steps below its caret.
+///
+/// Those steps run on worker threads when `parallel-encode` is on, and a
+/// `proc_macro2::Span` is not something a thread can hand to another, so
+/// they carry their diagnostics as plain text and meet a span here.
+pub(crate) fn at(span: Span) -> impl Fn(String) -> syn::Error {
+    move |message| syn::Error::new(span, message)
+}
+
+pub(crate) fn read(path: &Path, shown: &str) -> Result<Vec<u8>, String> {
+    std::fs::read(path).map_err(|e| read_error(&e, shown))
 }
 
 // The raw `embed_bytes!` mode never reads the file itself -- it defers to
@@ -37,7 +45,7 @@ pub(crate) fn read(path: &Path, shown: &str, span: Span) -> syn::Result<Vec<u8>>
 pub(crate) fn ensure_readable(path: &Path, shown: &str, span: Span) -> syn::Result<()> {
     std::fs::File::open(path)
         .map(drop)
-        .map_err(|e| read_error(&e, shown, span))
+        .map_err(|e| syn::Error::new(span, read_error(&e, shown)))
 }
 
 pub(crate) fn path_str(path: &Path, span: Span) -> syn::Result<&str> {
@@ -90,21 +98,14 @@ fn codec_name(codec: CodecId) -> String {
 /// size decision, and reusing it here would make an encoder bug look exactly
 /// like an incompressible file, discarding the only signal this check exists
 /// to produce.
-fn verify_decode(
-    codec: CodecId,
-    data: &[u8],
-    payload: &[u8],
-    shown: &str,
-    span: Span,
-) -> syn::Result<()> {
+fn verify_decode(codec: CodecId, data: &[u8], payload: &[u8], shown: &str) -> Result<(), String> {
     let fail = |detail: &str| {
         let name = codec_name(codec);
-        let msg = format!(
+        format!(
             "embark: `{shown}`: the {name} encoder produced a payload this build's \
              decoder cannot read back ({detail}). This is a bug in embark, not in \
              the asset; please report it."
-        );
-        syn::Error::new(span, msg)
+        )
     };
 
     let decoded = embark_codec::decompress(codec, payload, data.len())
@@ -136,8 +137,7 @@ pub(crate) fn compress_verified(
     codec: CodecArg,
     data: &[u8],
     shown: &str,
-    span: Span,
-) -> syn::Result<(CodecId, Vec<u8>)> {
+) -> Result<(CodecId, Vec<u8>), String> {
     let (codec, payload) = match codec {
         // Already never larger than the input, and already Store when
         // nothing in the tier helped. Only the winner is verified: every
@@ -155,18 +155,13 @@ pub(crate) fn compress_verified(
             }
         }
     };
-    verify_decode(codec, data, &payload, shown, span)?;
+    verify_decode(codec, data, &payload, shown)?;
     Ok((codec, payload))
 }
 
 // Build a plaintext (optionally compressed) entry as raw bytes.
-pub(crate) fn build_entry(
-    codec: CodecArg,
-    data: &[u8],
-    shown: &str,
-    span: Span,
-) -> syn::Result<Vec<u8>> {
-    let (codec, payload) = compress_verified(codec, data, shown, span)?;
+pub(crate) fn build_entry(codec: CodecArg, data: &[u8], shown: &str) -> Result<Vec<u8>, String> {
+    let (codec, payload) = compress_verified(codec, data, shown)?;
     let mut entry = Vec::new();
     write_entry(
         &mut entry,
@@ -199,16 +194,9 @@ mod tests {
     fn a_corrupted_payload_names_the_path_the_codec_and_the_offset() {
         let mut payload = DATA.to_vec();
         payload[12] ^= 0x01;
-        let err = verify_decode(
-            CodecId::Store,
-            DATA,
-            &payload,
-            "assets/logo.png",
-            Span::call_site(),
-        )
-        .expect_err("a flipped byte must not verify");
+        let msg = verify_decode(CodecId::Store, DATA, &payload, "assets/logo.png")
+            .expect_err("a flipped byte must not verify");
 
-        let msg = err.to_string();
         assert!(msg.contains("assets/logo.png"), "{msg}");
         assert!(msg.contains("store"), "{msg}");
         assert!(msg.contains("byte 12"), "{msg}");
@@ -218,29 +206,23 @@ mod tests {
     // the comparison below it, so this lands on the "decoding failed" arm.
     #[test]
     fn a_truncated_payload_is_reported_as_a_decoder_rejection() {
-        let err = verify_decode(
+        let msg = verify_decode(
             CodecId::Store,
             DATA,
             &DATA[..DATA.len() - 1],
             "assets/logo.png",
-            Span::call_site(),
         )
         .expect_err("a truncated payload must not verify");
 
-        let msg = err.to_string();
         assert!(msg.contains("assets/logo.png"), "{msg}");
         assert!(msg.contains("decoding failed"), "{msg}");
     }
 
     #[test]
     fn an_untouched_payload_verifies() {
-        let (codec, payload) = compress_verified(
-            CodecArg::Fixed(CodecId::Store),
-            DATA,
-            "assets/logo.png",
-            Span::call_site(),
-        )
-        .expect("store must round-trip");
+        let (codec, payload) =
+            compress_verified(CodecArg::Fixed(CodecId::Store), DATA, "assets/logo.png")
+                .expect("store must round-trip");
         assert_eq!(codec, CodecId::Store);
         assert_eq!(payload, DATA);
     }

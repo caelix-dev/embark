@@ -2,7 +2,7 @@ use crate::args::{CodecArg, parse_codec};
 use crate::{build, crypt, glob};
 use embark_format::{CodecId, CryptoId};
 use quote::quote;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use syn::LitStr;
 use syn::spanned::Spanned;
 
@@ -39,16 +39,34 @@ pub(crate) fn expand(input: &syn::DeriveInput) -> syn::Result<proc_macro2::Token
         None
     };
 
+    // One folder is many files, and a file is read, compressed and sealed
+    // without reference to any other: the shared key was drawn above, before
+    // any of this starts, and each entry's bytes stand alone. That makes the
+    // folder the outermost place there is to spend the encoder's threads,
+    // and the most valuable, since a derive over an asset folder is what
+    // most builds actually run.
+    //
+    // Only plain data crosses into the workers. A `proc_macro2::Span` is not
+    // `Send`, so the steps below report failures as text and the loop after
+    // this one gives them their caret back -- at `folder_span`, which is
+    // where every one of these diagnostics pointed before as well.
+    let jobs: Vec<(String, PathBuf)> = files
+        .iter()
+        .map(|(rel, abs)| (shown_child(&cfg, rel), abs.clone()))
+        .collect();
+    let (codec, cipher) = (cfg.codec, cfg.cipher);
+    let built = embark_codec::parallel::map(&jobs, |(shown, abs)| {
+        let data = build::read(abs, shown)?;
+        match key_material {
+            Some(key) => crypt::seal_with_key(&data, codec, cipher, key, shown),
+            None => build::build_entry(codec, &data, shown),
+        }
+    });
+
     let mut manifest_items = Vec::new();
     let mut tracked = Vec::new();
-    for (rel, abs) in &files {
-        let shown = shown_child(&cfg, rel);
-        let data = build::read(abs, &shown, folder_span)?;
-        let entry = if let Some(key) = key_material {
-            crypt::seal_with_key(&data, cfg.codec, cfg.cipher, key, &shown, folder_span)?
-        } else {
-            build::build_entry(cfg.codec, &data, &shown, folder_span)?
-        };
+    for ((rel, abs), entry) in files.iter().zip(built) {
+        let entry = entry.map_err(build::at(folder_span))?;
         let lit = build::bytes_literal(&entry);
         manifest_items.push(quote! {
             ::embark::Manifest::new(#rel, #lit)

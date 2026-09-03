@@ -45,6 +45,14 @@ jobs:
           cargo build -p embark-codec  --no-default-features --features "alloc dec deflate lz4 snappy" --target thumbv7em-none-eabihf
           cargo build -p embark-crypt  --no-default-features --features "alloc dec" --target thumbv7em-none-eabihf
           cargo build -p embark        --no-default-features --features "alloc deflate lz4 snappy encryption metadata" --target thumbv7em-none-eabihf
+      # `parallel-encode` gives the *encoder* threads, and the encoder only
+      # ever runs inside the proc macro on the build machine. This builds the
+      # combination that would expose a leak -- a bare-metal target, the
+      # derive enabled, the feature on -- because `embark-codec/std` reaching
+      # the target graph would fail right here and nowhere else.
+      - name: parallel-encode must not reach the target graph
+        run: |
+          cargo build -p embark --no-default-features --features "alloc derive parallel-encode deflate lz4 snappy encryption metadata" --target thumbv7em-none-eabihf
 
   interop:
     runs-on: ubuntu-latest

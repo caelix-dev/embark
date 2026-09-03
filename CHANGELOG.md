@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `parallel-encode`, a default feature that lets the build-time encoder use
+  every core the build machine has. A `#[derive(Embed)]` compresses the
+  folder's files side by side, and an `auto` policy runs its candidate
+  codecs side by side; both draw on one shared budget, so they never
+  oversubscribe together. Measured on 16 cores, a derive over 56 files
+  totalling 5.8 MB under `codec = "auto"` goes from 11.3 s to 2.9 s, and
+  `auto_small` on a 32 MB poorly compressible asset from 89 s to 53 s.
+
+  Compression runs in the proc macro, so this is build-machine work only:
+  the feature is not forwarded to the copy of `embark-codec` compiled for
+  your target, and a `no_std` binary gains neither a thread nor `std`. CI
+  builds that combination against `thumbv7em-none-eabihf` to keep it that
+  way.
+
+  Output does not depend on the core count. The same assets produce the same
+  bytes at one thread or thirty-two. `EMBARK_ENCODE_THREADS` caps the budget
+  for one build, or turns it off with `1`, which is what a build under an
+  external job server wants.
 - CI now builds and tests with `--all-features`, so the LZMA codec and the
   AES-256-GCM cipher are covered rather than a hand-maintained subset, and
   the LZMA interop test runs against the `xz` binary alongside the existing

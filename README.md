@@ -203,6 +203,7 @@ it the embedded data is unrecoverable.
 | `encryption` | no      | `embed_crypt!`, `EncryptedFile` (ChaCha20-Poly1305) |
 | `aes`        | no      | AES-256-GCM cipher for `embed_crypt!(cipher = aes)` |
 | `metadata`   | no      | per-entry metadata helpers (e.g. content hashing) |
+| `parallel-encode` | yes | lets the build-time encoder use every core; adds nothing to your binary |
 
 For `no_std` targets, build with `--no-default-features` and select `alloc`
 plus whichever codec features you need; see the `no_std` job in
@@ -238,9 +239,9 @@ opt-level = 3
 `zstd` sits in the same bracket. Its encoder parses each block by price and
 reprices four times over, which buys a payload within 1% of what real
 `zstd -19` achieves. What that costs depends on how much searching the asset
-gives it: with the override in place, a redundant asset runs at about 0.2 s
-per MiB and a large binary one at about 3 s per MiB, and 32 MB of the latter
-takes around 100 s. Without the override, multiply by roughly ten.
+gives it: with the override in place, a redundant asset runs at about 0.1 s
+per MiB and a large binary one at about 1.2 s per MiB. Without the override,
+multiply by roughly ten.
 
 Rules of thumb: under a few MB, `lzma` or `zstd` costs a few seconds per
 rebuild with that override in place and is usually worth it. Past roughly
@@ -254,9 +255,15 @@ Encoding 32 MB with each, optimized:
 
 | policy | redundant asset | poorly compressible asset |
 |---|---|---|
-| `auto_fast` | 0.0 s, LZ4 131,637 B | 0.2 s, Store 33,554,432 B |
-| `auto` | 4.1 s, Zstd 3,381 B | 180 s, Zstd 24,339,162 B |
-| `auto_small` | 6.7 s, Zstd 3,381 B | 226 s, LZMA 22,417,485 B |
+| `auto_fast` | 0.0 s, LZ4 131,735 B | 0.2 s, Store 33,554,432 B |
+| `auto` | 4.1 s, Zstd 3,464 B | 53 s, Zstd 24,339,163 B |
+| `auto_small` | 6.2 s, Zstd 3,464 B | 89 s, LZMA 22,417,485 B |
+
+Those are single-threaded figures, which is what you get with
+`EMBARK_ENCODE_THREADS=1`. With `parallel-encode` on — it is a default
+feature — the same machine's other cores cut the right-hand column to 50 s
+and 53 s, and a `#[derive(Embed)]` over a folder falls further still, since
+whole files then compress side by side. See below.
 
 The left column is an asset that compresses almost to nothing, so the search
 finds its matches immediately. The right one barely compresses, so both
@@ -269,6 +276,38 @@ So the rule of thumb is about the asset, not the policy: a large asset that
 does not compress well is the one to keep away from `auto` and `auto_small`.
 Name `deflate`, `lz4` or `snappy` for it explicitly, or accept the build cost
 once and rely on the rebuild note above.
+
+### Build-time threads
+
+Compression runs once, in the proc macro, on the machine doing the build.
+Decompression runs in every binary you ship. The `parallel-encode` feature
+spends the first of those on whatever cores the build machine has, and it is
+on by default; nothing it does reaches your binary, which gains neither a
+thread nor `std`.
+
+Two kinds of work overlap, from outermost in:
+
+- a `#[derive(Embed)]` compresses the folder's files side by side
+- an `auto` policy runs its candidate codecs side by side
+
+They draw on one shared budget, so the two together never ask for more
+threads than the machine has. Measured on a 16-core machine, a derive over
+56 files totalling 5.8 MB under `codec = "auto"`:
+
+| `EMBARK_ENCODE_THREADS` | build |
+|---|---:|
+| `1` | 11.3 s |
+| `4` | 4.3 s |
+| unset (16 here) | 2.9 s |
+
+Set `EMBARK_ENCODE_THREADS` to cap it, or to `1` to turn it off for one
+build. That matters under a job server: cargo already runs several rustc
+processes at once, and each of them expanding a macro that grabs every core
+is how a build machine ends up thrashing.
+
+The output does not depend on any of this. The same assets produce the same
+bytes at one thread or at thirty-two, so a build stays reproducible across
+machines that do not have the same core count.
 
 ## Similar projects
 
