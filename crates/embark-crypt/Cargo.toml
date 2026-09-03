@@ -26,7 +26,7 @@ aes-gcm = { version = "0.10", default-features = false, features = ["alloc", "ae
 # AES-256 schedule are the key itself, and `aes-gcm` has no feature that
 # forwards to it.
 aes = { version = "0.8", default-features = false, features = ["zeroize"], optional = true }
-getrandom = { version = "0.3", optional = true }
+getrandom = { version = "0.4", optional = true }
 zeroize = { version = "1.9", default-features = false, features = ["alloc"] }
 
 [features]
