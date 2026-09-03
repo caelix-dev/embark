@@ -55,6 +55,10 @@ mod codec;
 #[cfg(all(feature = "deflate", any(feature = "enc", feature = "dec")))]
 mod deflate;
 mod dispatch;
+// Build-time only: the encoder's thread budget. Nothing under `dec` reaches
+// it, so a consumer's binary never links it.
+#[cfg(feature = "enc")]
+mod threads;
 #[cfg(all(feature = "lz4", any(feature = "enc", feature = "dec")))]
 mod lz4;
 #[cfg(all(feature = "lzma", any(feature = "enc", feature = "dec")))]

@@ -12,7 +12,7 @@ use embark_format::CodecId;
 use embark_format::Error;
 
 #[cfg(feature = "enc")]
-type CompressFn = fn(&[u8]) -> Vec<u8>;
+pub(crate) type CompressFn = fn(&[u8]) -> Vec<u8>;
 
 #[cfg(feature = "dec")]
 type DecompressFn = fn(&[u8], usize) -> Result<Vec<u8>, Error>;

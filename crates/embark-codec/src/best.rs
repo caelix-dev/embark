@@ -130,10 +130,21 @@ fn effective(tier: AutoTier) -> AutoTier {
 #[must_use]
 pub fn compress_best_in(tier: AutoTier, input: &[u8]) -> (CodecId, Vec<u8>) {
     let tier = effective(tier);
-    crate::dispatch::ENCODERS
+    // The candidates are independent: each reads the same input and writes
+    // its own output, and none of them looks at what another produced. With
+    // `parallel-encode` on they run concurrently, which matters most for the
+    // tiers that include a codec searching as hard as Zstd or LZMA.
+    //
+    // `map` preserves the table's order, so the tie-break below is the one
+    // the table spells out rather than whichever encoder happened to finish
+    // first.
+    let candidates: Vec<(CodecId, crate::dispatch::CompressFn)> = crate::dispatch::ENCODERS
         .iter()
-        .filter(|&&(id, _)| contains(tier, id))
-        .map(|&(id, compress)| (id, compress(input)))
+        .copied()
+        .filter(|&(id, _)| contains(tier, id))
+        .collect();
+    crate::threads::map(&candidates, |&(id, compress)| (id, compress(input)))
+        .into_iter()
         .min_by_key(|(_, out)| out.len())
         .filter(|(_, out)| out.len() < input.len())
         .unwrap_or_else(|| (CodecId::Store, crate::store::compress(input)))

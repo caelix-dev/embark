@@ -49,6 +49,12 @@ lz4 = ["dep:lz4_flex"]
 snappy = []
 zstd = ["dep:ruzstd"]
 lzma = []
+# Lets the build-time encoder use more than one thread. Compression happens
+# in the proc macro on the build machine, so this never reaches a consumer's
+# target: `embark-macros` turns it on for its own copy of this crate, and
+# resolver 3 keeps that copy's features out of the target graph. Set
+# `EMBARK_ENCODE_THREADS` to cap or disable it for one build.
+parallel-encode = ["std"]
 
 [lints]
 workspace = true
