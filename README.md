@@ -100,8 +100,8 @@ it the embedded data is unrecoverable.
 | `deflate`    | yes     | the Deflate codec |
 | `lz4`        | no      | the LZ4 codec |
 | `snappy`     | no      | the Snappy codec (self-implemented, no dependency) |
-| `zstd`       | no      | reserved for Phase 2 (Zstd) |
-| `lzma`       | no      | reserved for Phase 3 |
+| `zstd`       | no      | the Zstd codec |
+| `lzma`       | no      | the LZMA codec (self-implemented, no dependency) |
 | `encryption` | no      | `embed_crypt!`, `EncryptedFile` (ChaCha20-Poly1305) |
 | `aes`        | no      | AES-256-GCM cipher for `embed_crypt!(cipher = aes)` |
 | `metadata`   | no      | per-entry metadata helpers (e.g. content hashing) |
