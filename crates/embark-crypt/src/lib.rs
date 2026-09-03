@@ -10,6 +10,9 @@ pub use aead::open;
 #[cfg(feature = "enc")]
 pub use aead::seal;
 
+mod aead_trait;
+pub use aead_trait::{Aead, ChaCha20Poly1305};
+
 mod keygen;
 #[cfg(feature = "enc")]
 pub use keygen::gen_key_nonce;
