@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/caelix-dev/embark/security/policy
+    about: Please report vulnerabilities privately per SECURITY.md, not as a public issue.
