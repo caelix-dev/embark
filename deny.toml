@@ -1,0 +1,52 @@
+# Config for `cargo deny check` (advisories, licenses, bans, sources).
+# Docs: https://embarkstudios.github.io/cargo-deny/
+#
+# Run locally with: cargo install cargo-deny --locked && cargo deny check
+
+[graph]
+all-features = true
+
+[output]
+feature-depth = 1
+
+# https://embarkstudios.github.io/cargo-deny/checks/advisories/cfg.html
+[advisories]
+ignore = [
+    #"RUSTSEC-0000-0000",
+]
+
+# https://embarkstudios.github.io/cargo-deny/checks/licenses/cfg.html
+[licenses]
+# embark itself is MIT-only (see LICENSE-MIT / the workspace `license` key).
+# This allow-list is for the *dependency* tree, not embark's own code: most
+# deps are dual MIT/Apache-2.0 and are satisfied via the MIT side of that
+# OR, so allowing Apache-2.0 here does not relicense anything embark ships.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    # adler2 (miniz_oxide -> embark-codec): "0BSD OR MIT OR Apache-2.0"
+    "0BSD",
+    # subtle (AEAD stack -> embark-crypt): "BSD-3-Clause", no OR
+    "BSD-3-Clause",
+    # unicode-ident (syn/proc-macro2 -> embark-macros):
+    # "(MIT OR Apache-2.0) AND Unicode-3.0" — the AND means both sides must
+    # be allowed, so this is required alongside MIT/Apache-2.0 above.
+    "Unicode-3.0",
+]
+confidence-threshold = 0.8
+
+[licenses.private]
+ignore = true
+
+# https://embarkstudios.github.io/cargo-deny/checks/bans/cfg.html
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+workspace-default-features = "allow"
+external-default-features = "allow"
+
+# https://embarkstudios.github.io/cargo-deny/checks/sources/cfg.html
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
