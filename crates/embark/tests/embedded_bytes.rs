@@ -24,7 +24,7 @@ fn store_entry_borrows() {
     let eb = EmbeddedBytes::from_entry(entry);
     assert!(matches!(eb.data(), Cow::Borrowed(_)));
     assert_eq!(&*eb.data(), b"plain");
-    assert_eq!(eb.size(), 5);
+    assert_eq!(eb.size(), Some(5));
 }
 
 #[test]
@@ -34,4 +34,10 @@ fn deflate_entry_owns_and_decodes() {
     let eb = EmbeddedBytes::from_entry(entry);
     assert!(matches!(eb.data(), Cow::Owned(_)));
     assert_eq!(&*eb.data(), &data[..]);
+}
+
+#[test]
+fn size_is_none_for_an_unreadable_header() {
+    let eb = EmbeddedBytes::from_entry(&[]);
+    assert_eq!(eb.size(), None);
 }

@@ -111,16 +111,19 @@ impl EmbeddedFile {
     /// The original (decompressed) size of the file, in bytes.
     ///
     /// Reads the size out of the entry header without decompressing the
-    /// payload; returns `0` if the header cannot be read. For a
-    /// `#[embark(dev)]` file read live from disk, this is the size of the
-    /// bytes actually read.
-    pub fn size(&self) -> usize {
+    /// payload. `None` means the header could not be read, or records a
+    /// length this platform's `usize` cannot hold — distinct from
+    /// `Some(0)`, which is a genuinely empty file. For a `#[embark(dev)]`
+    /// file read live from disk, this is the size of the bytes actually
+    /// read.
+    pub fn size(&self) -> Option<usize> {
         match &self.source {
-            Source::Static(entry) => embark_format::read_header(entry)
-                .map(|h| h.orig_len as usize)
-                .unwrap_or(0),
+            Source::Static(entry) => {
+                let header = embark_format::read_header(entry).ok()?;
+                usize::try_from(header.orig_len).ok()
+            }
             #[cfg(feature = "std")]
-            Source::Owned(bytes) => bytes.len(),
+            Source::Owned(bytes) => Some(bytes.len()),
         }
     }
 

@@ -17,7 +17,7 @@ fn transformed_decodes() {
     .unwrap();
     assert_eq!(&*LOGO.data(), &expected[..]);
     assert_eq!(&*AUTO.data(), &expected[..]);
-    assert_eq!(LOGO.size(), expected.len());
+    assert_eq!(LOGO.size(), Some(expected.len()));
 }
 
 #[cfg(feature = "zstd")]
@@ -33,7 +33,7 @@ fn explicit_zstd_roundtrips() {
     ))
     .unwrap();
     assert_eq!(&*ZSTD.data(), &expected[..]);
-    assert_eq!(ZSTD.size(), expected.len());
+    assert_eq!(ZSTD.size(), Some(expected.len()));
 }
 
 #[cfg(feature = "lzma")]
@@ -49,5 +49,5 @@ fn explicit_lzma_roundtrips() {
     ))
     .unwrap();
     assert_eq!(&*LZMA.data(), &expected[..]);
-    assert_eq!(LZMA.size(), expected.len());
+    assert_eq!(LZMA.size(), Some(expected.len()));
 }

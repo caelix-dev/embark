@@ -71,10 +71,11 @@ impl EmbeddedBytes {
     /// The original (decompressed) size of the file, in bytes.
     ///
     /// Reads the size out of the entry header without decompressing the
-    /// payload; returns `0` if the header cannot be read.
-    pub fn size(&self) -> usize {
-        read_header(self.entry)
-            .map(|h| h.orig_len as usize)
-            .unwrap_or(0)
+    /// payload. `None` means the header could not be read, or records a
+    /// length this platform's `usize` cannot hold — distinct from
+    /// `Some(0)`, which is a genuinely empty file.
+    pub fn size(&self) -> Option<usize> {
+        let header = read_header(self.entry).ok()?;
+        usize::try_from(header.orig_len).ok()
     }
 }

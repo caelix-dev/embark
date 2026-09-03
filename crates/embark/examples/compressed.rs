@@ -6,9 +6,8 @@ static DOC: embark::EmbeddedBytes =
 
 fn main() {
     let bytes = DOC.data();
-    println!(
-        "decoded {} bytes (original size {})",
-        bytes.len(),
-        DOC.size()
-    );
+    match DOC.size() {
+        Some(size) => println!("decoded {} bytes (original size {size})", bytes.len()),
+        None => println!("decoded {} bytes (header unreadable)", bytes.len()),
+    }
 }
