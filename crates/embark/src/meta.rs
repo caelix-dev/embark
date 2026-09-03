@@ -2,10 +2,20 @@
 use crate::embed::EmbeddedFile;
 
 impl EmbeddedFile {
+    /// The SHA-256 hash of the file's (decompressed, decrypted) contents.
+    ///
+    /// Computed on demand from [`data`](EmbeddedFile::data) — not cached,
+    /// and not read from the entry header (the format does not store a
+    /// hash). Uses a self-contained `no_std + alloc` SHA-256 implementation
+    /// with no external dependency.
     pub fn hash(&self) -> [u8; 32] {
         sha256(&self.data())
     }
 
+    /// A best-effort MIME type, guessed from the file's extension.
+    ///
+    /// Falls back to `"application/octet-stream"` for unrecognized or
+    /// missing extensions.
     pub fn mime(&self) -> &'static str {
         mime_from_path(self.path())
     }

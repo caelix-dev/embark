@@ -1,12 +1,35 @@
 use alloc::borrow::Cow;
 
+/// One compiled-in `(path, entry)` pair in a `#[derive(Embed)]` manifest.
+///
+/// Built entirely by the derive macro at build time; not constructed by
+/// hand. `path` is the file's path relative to the folder given in
+/// `#[embark(folder = "...")]`, and `entry` is the encoded (header +
+/// payload) bytes for the file.
 pub struct Manifest {
     pub path: &'static str,
     pub entry: &'static [u8],
 }
 
+/// Implemented by types produced with `#[derive(Embed)]`, giving directory
+/// access to the files embedded from `#[embark(folder = "...")]`.
+///
+/// # Example
+///
+/// ```ignore
+/// #[derive(embark::Embed)]
+/// #[embark(folder = "assets")]
+/// struct Assets;
+///
+/// let file = Assets::get("logo.png").unwrap();
+/// let data = file.data();
+/// for path in Assets::iter() { /* ... */ }
+/// ```
 pub trait Embed {
+    /// Looks up a single file by its path relative to the embedded folder.
+    /// Returns `None` if no embedded file has that path.
     fn get(path: &str) -> Option<EmbeddedFile>;
+    /// Iterates the paths of every embedded file, in sorted order.
     fn iter() -> Entries;
 }
 
@@ -16,6 +39,9 @@ enum Source {
     Owned(alloc::vec::Vec<u8>),
 }
 
+/// A single file looked up from a `#[derive(Embed)]` type via
+/// [`Embed::get`], obtained via [`lookup`] / [`lookup_encrypted`], or (in
+/// debug builds, with `#[embark(dev)]`) read live from disk.
 pub struct EmbeddedFile {
     source: Source,
     path: Cow<'static, str>,
@@ -23,11 +49,28 @@ pub struct EmbeddedFile {
 }
 
 impl EmbeddedFile {
+    /// Returns the file's decompressed (and, if applicable, decrypted)
+    /// contents.
+    ///
+    /// Infallible by construction for the compiled-in case: the entry was
+    /// built and validated at compile time, so decoding it back out cannot
+    /// fail in a correctly built binary. In debug builds under
+    /// `#[embark(dev)]`, the file is instead read straight off disk each
+    /// time and returned as-is.
+    ///
+    /// # Panics
+    ///
+    /// Panics only on internal corruption of a compiled-in entry (a
+    /// build-time bug, not something a caller can trigger at runtime). Use
+    /// [`try_data`](EmbeddedFile::try_data) for the fallible form.
     pub fn data(&self) -> Cow<'static, [u8]> {
         self.try_data()
             .expect("embark: embedded entry is malformed (build-time bug)")
     }
 
+    /// The fallible form of [`data`](EmbeddedFile::data): decodes and
+    /// returns the file contents, or an error if the compiled-in entry is
+    /// malformed.
     pub fn try_data(&self) -> Result<Cow<'static, [u8]>, embark_format::Error> {
         match &self.source {
             Source::Static(entry) => {
@@ -41,6 +84,12 @@ impl EmbeddedFile {
         }
     }
 
+    /// The original (decompressed) size of the file, in bytes.
+    ///
+    /// Reads the size out of the entry header without decompressing the
+    /// payload; returns `0` if the header cannot be read. For a
+    /// `#[embark(dev)]` file read live from disk, this is the size of the
+    /// bytes actually read.
     pub fn size(&self) -> usize {
         match &self.source {
             Source::Static(entry) => embark_format::read_header(entry)
@@ -51,6 +100,8 @@ impl EmbeddedFile {
         }
     }
 
+    /// The file's path, relative to the folder given in
+    /// `#[embark(folder = "...")]`.
     pub fn path(&self) -> &str {
         &self.path
     }
@@ -67,6 +118,8 @@ fn embark_crypt_xor(_masked: [u8; 32], _mask: [u8; 32]) -> [u8; 32] {
     [0u8; 32]
 }
 
+/// Iterator over the paths of every file embedded in a `#[derive(Embed)]`
+/// manifest, in sorted order. Returned by [`Embed::iter`] / [`entries`].
 pub struct Entries {
     inner: core::slice::Iter<'static, Manifest>,
 }
@@ -78,6 +131,9 @@ impl Iterator for Entries {
     }
 }
 
+/// Looks up an unencrypted, compiled-in file by path (binary search) in a
+/// `#[derive(Embed)]` manifest. Used internally by the derive's generated
+/// `get()`; not normally called directly.
 pub fn lookup(manifest: &'static [Manifest], path: &str) -> Option<EmbeddedFile> {
     let idx = manifest.binary_search_by(|m| m.path.cmp(path)).ok()?;
     let m = &manifest[idx];
@@ -88,12 +144,21 @@ pub fn lookup(manifest: &'static [Manifest], path: &str) -> Option<EmbeddedFile>
     })
 }
 
+/// Iterates every path in a `#[derive(Embed)]` manifest, in sorted order.
+/// Used internally by the derive's generated `iter()`; not normally called
+/// directly.
 pub fn entries(manifest: &'static [Manifest]) -> Entries {
     Entries {
         inner: manifest.iter(),
     }
 }
 
+/// Looks up a build-time-encrypted, compiled-in file by path (binary
+/// search) in a `#[derive(Embed)]` manifest, attaching its masked key
+/// material. Used internally by the derive's generated `get()` when
+/// `#[embark(encrypt)]` is set; not normally called directly. See
+/// [`EncryptedFile`](crate::EncryptedFile) for why the build-time key is
+/// obfuscation, not security.
 #[cfg(feature = "encryption")]
 pub fn lookup_encrypted(
     manifest: &'static [Manifest],
