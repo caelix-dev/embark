@@ -5,6 +5,7 @@
 extern crate alloc;
 
 mod best;
+mod codec;
 #[cfg(feature = "deflate")]
 mod deflate;
 mod dispatch;
@@ -17,6 +18,18 @@ mod snappy;
 mod store;
 #[cfg(feature = "zstd")]
 mod zstd;
+
+#[cfg(feature = "deflate")]
+pub use codec::Deflate;
+#[cfg(feature = "lz4")]
+pub use codec::Lz4;
+#[cfg(feature = "lzma")]
+pub use codec::Lzma;
+#[cfg(feature = "snappy")]
+pub use codec::Snappy;
+#[cfg(feature = "zstd")]
+pub use codec::Zstd;
+pub use codec::{Codec, Store};
 
 #[cfg(feature = "enc")]
 pub use best::compress_best;
