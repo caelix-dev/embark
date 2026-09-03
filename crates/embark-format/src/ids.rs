@@ -56,15 +56,28 @@ mod tests {
 
     #[test]
     fn codec_roundtrip() {
-        for id in [CodecId::Store, CodecId::Deflate, CodecId::Lz4, CodecId::Snappy, CodecId::Zstd, CodecId::Lzma] {
+        for id in [
+            CodecId::Store,
+            CodecId::Deflate,
+            CodecId::Lz4,
+            CodecId::Snappy,
+            CodecId::Zstd,
+            CodecId::Lzma,
+        ] {
             assert_eq!(CodecId::from_u8(id.as_u8()).unwrap(), id);
         }
-        assert!(matches!(CodecId::from_u8(9), Err(crate::Error::UnknownCodec(9))));
+        assert!(matches!(
+            CodecId::from_u8(9),
+            Err(crate::Error::UnknownCodec(9))
+        ));
     }
 
     #[test]
     fn crypto_roundtrip() {
         assert_eq!(CryptoId::from_u8(1).unwrap(), CryptoId::ChaCha20Poly1305);
-        assert!(matches!(CryptoId::from_u8(7), Err(crate::Error::UnknownCrypto(7))));
+        assert!(matches!(
+            CryptoId::from_u8(7),
+            Err(crate::Error::UnknownCrypto(7))
+        ));
     }
 }

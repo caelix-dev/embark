@@ -9,13 +9,13 @@ mod error;
 mod ids;
 mod varint;
 
-pub use error::Error;
-#[cfg(feature = "enc")]
-pub use entry::write_entry;
 #[cfg(feature = "dec")]
 pub use entry::read_header;
+#[cfg(feature = "enc")]
+pub use entry::write_entry;
 pub use entry::Header;
+pub use error::Error;
 pub use ids::{CodecId, CryptoId};
+pub use varint::read_varint;
 #[cfg(feature = "alloc")]
 pub use varint::write_varint;
-pub use varint::read_varint;

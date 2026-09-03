@@ -53,7 +53,14 @@ pub fn read_header(entry: &[u8]) -> Result<Header, Error> {
         }
     };
 
-    Ok(Header { codec, crypto, orig_len, nonce, tag, payload_offset: offset })
+    Ok(Header {
+        codec,
+        crypto,
+        orig_len,
+        nonce,
+        tag,
+        payload_offset: offset,
+    })
 }
 
 #[cfg(all(test, feature = "enc", feature = "dec"))]
@@ -64,7 +71,14 @@ mod tests {
     #[test]
     fn plain_entry_roundtrip() {
         let mut buf = Vec::new();
-        write_entry(&mut buf, CodecId::Store, CryptoId::None, 3, None, &[1, 2, 3]);
+        write_entry(
+            &mut buf,
+            CodecId::Store,
+            CryptoId::None,
+            3,
+            None,
+            &[1, 2, 3],
+        );
         let h = read_header(&buf).unwrap();
         assert_eq!(h.codec, CodecId::Store);
         assert_eq!(h.crypto, CryptoId::None);
@@ -78,8 +92,14 @@ mod tests {
         let nonce = [9u8; 12];
         let tag = [7u8; 16];
         let mut buf = Vec::new();
-        write_entry(&mut buf, CodecId::Deflate, CryptoId::ChaCha20Poly1305, 100,
-                    Some((nonce, tag)), &[0xAA, 0xBB]);
+        write_entry(
+            &mut buf,
+            CodecId::Deflate,
+            CryptoId::ChaCha20Poly1305,
+            100,
+            Some((nonce, tag)),
+            &[0xAA, 0xBB],
+        );
         let h = read_header(&buf).unwrap();
         assert_eq!(h.codec, CodecId::Deflate);
         assert_eq!(h.crypto, CryptoId::ChaCha20Poly1305);
