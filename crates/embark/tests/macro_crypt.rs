@@ -15,6 +15,22 @@ fn build_time_key_roundtrips() {
     assert_eq!(SECRET.decrypt(), expected);
 }
 
+// `embed_crypt!` runs the same codec selection every other path does; the
+// selection reads the plaintext, before sealing, so the sealed entry still
+// has to decrypt to the file verbatim.
+static SECRET_AUTO: embark::EncryptedFile =
+    embark::embed_crypt!("tests/fixtures/repetitive.txt", codec = auto);
+
+#[test]
+fn an_auto_selected_codec_roundtrips_through_the_cipher() {
+    let expected = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/repetitive.txt"
+    ))
+    .unwrap();
+    assert_eq!(SECRET_AUTO.decrypt(), expected);
+}
+
 #[cfg(feature = "aes")]
 static SECRET_AES: embark::EncryptedFile =
     embark::embed_crypt!("tests/fixtures/secret.txt", cipher = aes);

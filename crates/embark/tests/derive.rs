@@ -9,6 +9,20 @@ use embark::Embed;
 #[embark(exclude = "*.skip")]
 struct Assets;
 
+// The fast end of the `auto` family, spelled as the derive spells it.
+#[derive(Embed)]
+#[embark(folder = "tests/assets/", codec = "auto_fast", exclude = "*.skip")]
+struct FastAssets;
+
+#[test]
+fn derive_auto_fast() {
+    assert_eq!(
+        &*FastAssets::get("one.txt").unwrap().data(),
+        b"one
+"
+    );
+}
+
 #[test]
 fn derive_get_iter() {
     assert_eq!(&*Assets::get("one.txt").unwrap().data(), b"one\n");

@@ -21,6 +21,23 @@ fn derive_encrypt_roundtrips() {
     assert_eq!(&*f.data(), b"one\n");
 }
 
+// `encrypt` used to skip the codec-selection pass entirely and hard-code
+// Deflate. It runs the selection now, on the plaintext, before sealing.
+#[derive(Embed)]
+#[embark(folder = "tests/assets/")]
+#[embark(encrypt, codec = "auto_small")]
+struct EncryptedAutoAssets;
+
+#[test]
+fn derive_encrypt_with_an_auto_policy_roundtrips() {
+    let f = EncryptedAutoAssets::get("one.txt").unwrap();
+    assert_eq!(
+        &*f.data(),
+        b"one
+"
+    );
+}
+
 #[derive(Embed)]
 #[embark(folder = "tests/assets/")]
 #[embark(dev)]
