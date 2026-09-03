@@ -30,3 +30,19 @@ zstd = ["embark-codec/zstd"]
 lzma = ["embark-codec/lzma"]
 encryption = ["dep:embark-crypt", "embark-crypt/dec"]
 metadata = []
+
+[[example]]
+name = "single_file"
+required-features = ["derive"]
+
+[[example]]
+name = "basic_derive"
+required-features = ["derive"]
+
+[[example]]
+name = "compressed"
+required-features = ["derive"]
+
+[[example]]
+name = "encrypted"
+required-features = ["derive", "encryption"]
