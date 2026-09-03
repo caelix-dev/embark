@@ -64,17 +64,16 @@ impl<'a> RangeDecoder<'a> {
     #[inline]
     pub(crate) fn decode_bit(&mut self, prob: &mut u16) -> u32 {
         let bound = (self.range >> 11) * (*prob as u32);
-        let bit;
-        if self.code < bound {
+        let bit = if self.code < bound {
             self.range = bound;
             *prob += ((2048 - *prob as u32) >> MOVE_BITS) as u16;
-            bit = 0;
+            0
         } else {
             self.range -= bound;
             self.code -= bound;
             *prob -= *prob >> MOVE_BITS;
-            bit = 1;
-        }
+            1
+        };
         self.normalize();
         bit
     }
