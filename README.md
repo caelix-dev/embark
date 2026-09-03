@@ -1,5 +1,9 @@
 # embark
 
+[![CI](https://github.com/caelix-dev/embark/actions/workflows/ci.yml/badge.svg)](https://github.com/caelix-dev/embark/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE-MIT)
+[![MSRV](https://img.shields.io/badge/MSRV-1.87-blue.svg)](Cargo.toml)
+
 `embark` is a unified embedding layer for Rust: it packs files into your
 binary at compile time and gives you one consistent API to read them back,
 whichever combination of compression and encryption you chose per file. It's
