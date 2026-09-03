@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/caelix-dev/embark"
+rust-version = "1.74"
+
+[workspace.dependencies]
+embark-format = { version = "0.1.0", path = "crates/embark-format", default-features = false }
+embark-codec = { version = "0.1.0", path = "crates/embark-codec", default-features = false }
+embark-crypt = { version = "0.1.0", path = "crates/embark-crypt", default-features = false }
+embark-macros = { version = "0.1.0", path = "crates/embark-macros" }

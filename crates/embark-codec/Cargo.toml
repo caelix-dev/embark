@@ -1,0 +1,26 @@
+[package]
+name = "embark-codec"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Unified compression codec layer for embark."
+
+[dependencies]
+embark-format.workspace = true
+miniz_oxide = { version = "0.8", default-features = false, features = ["with-alloc"], optional = true }
+lz4_flex = { version = "0.11", default-features = false, features = ["safe-decode", "safe-encode"], optional = true }
+# ruzstd is added in Phase 2 (zstd). Snappy is self-implemented (no dep).
+
+[features]
+default = []
+std = []
+alloc = ["embark-format/alloc"]
+enc = ["alloc", "embark-format/enc"]
+dec = ["alloc", "embark-format/dec"]
+deflate = ["dep:miniz_oxide"]
+lz4 = ["dep:lz4_flex"]
+snappy = []
+zstd = []   # Phase 2: = ["dep:ruzstd"]
+lzma = []   # Phase 3

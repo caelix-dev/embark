@@ -1,0 +1,15 @@
+[package]
+name = "embark-format"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Shared on-binary layout for the embark file-embedding toolkit."
+
+[features]
+default = ["std"]
+std = []
+alloc = []
+enc = ["alloc"]
+dec = ["alloc"]

@@ -1,0 +1,27 @@
+[package]
+name = "embark"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Embed files into your binary with optional compression and encryption."
+
+[dependencies]
+embark-format.workspace = true
+embark-codec.workspace = true
+embark-crypt = { workspace = true, optional = true }
+embark-macros = { workspace = true, optional = true }
+
+[features]
+default = ["std", "derive", "deflate"]
+std = ["embark-format/std", "embark-format/dec", "embark-codec/dec"]
+alloc = ["embark-format/alloc", "embark-format/dec", "embark-codec/dec", "embark-codec/alloc"]
+derive = ["dep:embark-macros"]
+deflate = ["embark-codec/deflate"]
+lz4 = ["embark-codec/lz4"]
+snappy = ["embark-codec/snappy"]
+zstd = ["embark-codec/zstd"]
+lzma = ["embark-codec/lzma"]
+encryption = ["dep:embark-crypt", "embark-crypt/dec"]
+metadata = []
