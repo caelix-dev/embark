@@ -37,7 +37,7 @@ deflate = ["dep:miniz_oxide"]
 lz4 = ["dep:lz4_flex"]
 snappy = []
 zstd = ["dep:ruzstd"]
-lzma = []   # Phase 3
+lzma = []
 
 [lints]
 workspace = true

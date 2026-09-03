@@ -46,19 +46,22 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+// A codec's implementation is only reachable through `enc` or `dec`. With
+// neither, the module would compile to dead code, so it is not compiled at
+// all; the `Codec` handle it names stays available either way.
 mod best;
 mod codec;
-#[cfg(feature = "deflate")]
+#[cfg(all(feature = "deflate", any(feature = "enc", feature = "dec")))]
 mod deflate;
 mod dispatch;
-#[cfg(feature = "lz4")]
+#[cfg(all(feature = "lz4", any(feature = "enc", feature = "dec")))]
 mod lz4;
-#[cfg(feature = "lzma")]
+#[cfg(all(feature = "lzma", any(feature = "enc", feature = "dec")))]
 mod lzma;
-#[cfg(feature = "snappy")]
+#[cfg(all(feature = "snappy", any(feature = "enc", feature = "dec")))]
 mod snappy;
 mod store;
-#[cfg(feature = "zstd")]
+#[cfg(all(feature = "zstd", any(feature = "enc", feature = "dec")))]
 mod zstd;
 
 #[cfg(feature = "deflate")]

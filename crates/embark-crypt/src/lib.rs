@@ -29,9 +29,12 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+// Every cipher body sits behind `enc` or `dec`. With neither, these modules
+// would be dead code, so they are not compiled at all.
+#[cfg(any(feature = "enc", feature = "dec"))]
 mod aead;
 
-#[cfg(feature = "aes")]
+#[cfg(all(feature = "aes", any(feature = "enc", feature = "dec")))]
 mod aes;
 
 mod aead_trait;
@@ -39,6 +42,7 @@ mod aead_trait;
 pub use aead_trait::Aes256Gcm;
 pub use aead_trait::{Aead, ChaCha20Poly1305};
 
+#[cfg(any(feature = "enc", feature = "dec"))]
 mod dispatch;
 #[cfg(feature = "dec")]
 pub use dispatch::open;
