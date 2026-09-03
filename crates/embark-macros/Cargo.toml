@@ -15,5 +15,14 @@ syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
 embark-format = { workspace = true, features = ["enc"] }
-embark-codec = { workspace = true, features = ["enc", "deflate", "lz4", "snappy"] }
+embark-codec = { workspace = true, features = ["enc"] }
 embark-crypt = { workspace = true, features = ["enc"] }
+
+[features]
+# Mirror the codec features the consuming `embark` crate enables, so
+# `compress_best` (and `codec = auto`) never picks a codec the consumer
+# has no decoder compiled in for. See crates/embark/Cargo.toml, which
+# forwards its own per-codec features to these via `embark-macros?/<codec>`.
+deflate = ["embark-codec/deflate"]
+lz4 = ["embark-codec/lz4"]
+snappy = ["embark-codec/snappy"]

@@ -62,26 +62,30 @@ pub fn expand(input: syn::DeriveInput) -> proc_macro2::TokenStream {
         quote!(::embark::lookup(MANIFEST, path))
     };
 
-    let dev_branch = if dev {
-        quote! {
-            #[cfg(debug_assertions)]
-            {
-                return ::embark::__dev_file(#folder_abs_str, path);
-            }
-        }
+    // With #[embark(dev)] the #[cfg(debug_assertions)] branch below always
+    // returns in a debug build, which makes `get_body` provably unreachable
+    // from rustc's point of view even though it is very much live in a
+    // release build. Scoped to the dev case only, so a real unreachable-code
+    // bug in a non-dev derive still gets flagged.
+    let (dev_branch, unreachable_allow) = if dev {
+        (
+            quote! {
+                #[cfg(debug_assertions)]
+                {
+                    return ::embark::__dev_file(#folder_abs_str, path);
+                }
+            },
+            quote!(#[allow(unreachable_code)]),
+        )
     } else {
-        quote!()
+        (quote!(), quote!())
     };
 
     quote! {
         const _: () = {
             static MANIFEST: &[::embark::Manifest] = &[ #(#manifest_items),* ];
             impl ::embark::Embed for #name {
-                // With #[embark(dev)] the #[cfg(debug_assertions)] branch below
-                // always returns in a debug build, which makes `get_body`
-                // provably unreachable from rustc's point of view even though
-                // it is very much live in a release build.
-                #[allow(unreachable_code)]
+                #unreachable_allow
                 fn get(path: &str) -> ::core::option::Option<::embark::EmbeddedFile> {
                     #dev_branch
                     #get_body
