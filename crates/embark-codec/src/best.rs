@@ -4,55 +4,19 @@ use alloc::vec::Vec;
 #[cfg(feature = "enc")]
 use embark_format::CodecId;
 
+/// Compress `input` with every codec compiled into this build and return the
+/// smallest result.
+///
+/// [`CodecId::Store`] is the baseline: a codec wins only if it is strictly
+/// smaller than the input, and among codecs the earliest entry of the codec
+/// table wins a tie, which is what `min_by_key` yields.
 #[cfg(feature = "enc")]
 pub fn compress_best(input: &[u8]) -> (CodecId, Vec<u8>) {
-    // Store is the baseline; a codec wins only if strictly smaller.
-    let mut best_id = CodecId::Store;
-    let mut best = input.to_vec();
-
-    let consider = |id: CodecId, bytes: Vec<u8>, best_id: &mut CodecId, best: &mut Vec<u8>| {
-        if bytes.len() < best.len() {
-            *best_id = id;
-            *best = bytes;
-        }
-    };
-
-    #[cfg(feature = "deflate")]
-    consider(
-        CodecId::Deflate,
-        crate::deflate::compress(input),
-        &mut best_id,
-        &mut best,
-    );
-    #[cfg(feature = "lz4")]
-    consider(
-        CodecId::Lz4,
-        crate::lz4::compress(input),
-        &mut best_id,
-        &mut best,
-    );
-    #[cfg(feature = "snappy")]
-    consider(
-        CodecId::Snappy,
-        crate::snappy::compress(input),
-        &mut best_id,
-        &mut best,
-    );
-    #[cfg(feature = "zstd")]
-    consider(
-        CodecId::Zstd,
-        crate::zstd::compress(input),
-        &mut best_id,
-        &mut best,
-    );
-    #[cfg(feature = "lzma")]
-    consider(
-        CodecId::Lzma,
-        crate::lzma::compress(input),
-        &mut best_id,
-        &mut best,
-    );
-
-    let _ = &consider; // silence unused warning when no codec feature is on
-    (best_id, best)
+    crate::dispatch::ENCODERS
+        .iter()
+        .filter(|&&(id, _)| id != CodecId::Store)
+        .map(|&(id, compress)| (id, compress(input)))
+        .min_by_key(|(_, out)| out.len())
+        .filter(|(_, out)| out.len() < input.len())
+        .unwrap_or_else(|| (CodecId::Store, crate::store::compress(input)))
 }
