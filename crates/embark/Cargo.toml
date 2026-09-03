@@ -33,6 +33,7 @@ embark-macros = { workspace = true, optional = true }
 embark-format = { workspace = true, features = ["enc"] }
 embark-codec = { workspace = true, features = ["enc"] }
 embark-crypt = { workspace = true, features = ["enc"] }
+trybuild = "1.0"
 
 [features]
 default = ["std", "derive", "deflate"]

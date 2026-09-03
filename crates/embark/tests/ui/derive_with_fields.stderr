@@ -1,0 +1,8 @@
+error: #[derive(Embed)] expects a unit struct, e.g. `struct Assets;`; this struct has fields
+ --> tests/ui/derive_with_fields.rs:7:15
+  |
+7 |   struct Assets {
+  |  _______________^
+8 | |     name: String,
+9 | | }
+  | |_^

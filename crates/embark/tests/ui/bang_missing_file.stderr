@@ -1,0 +1,5 @@
+error: embark: file not found: `assets/does_not_exist.bin` (resolved relative to CARGO_MANIFEST_DIR)
+ --> tests/ui/bang_missing_file.rs:2:34
+  |
+2 |     let _ = embark::embed_bytes!("assets/does_not_exist.bin", codec = deflate);
+  |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^

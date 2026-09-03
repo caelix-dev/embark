@@ -1,0 +1,5 @@
+error: #[derive(Embed)] expects a unit struct, e.g. `struct Assets;`; generic parameters are not supported
+ --> tests/ui/derive_generic_struct.rs:8:14
+  |
+8 | struct Assets<T>(PhantomData<T>);
+  |              ^

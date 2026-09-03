@@ -1,0 +1,5 @@
+error: unknown cipher `bogus`
+ --> tests/ui/crypt_unknown_cipher.rs:2:62
+  |
+2 |     let _ = embark::embed_crypt!("assets/data.bin", cipher = bogus);
+  |                                                              ^^^^^

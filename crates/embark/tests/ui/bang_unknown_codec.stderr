@@ -1,0 +1,5 @@
+error: unknown codec `bogus`
+ --> tests/ui/bang_unknown_codec.rs:2:61
+  |
+2 |     let _ = embark::embed_bytes!("assets/data.bin", codec = bogus);
+  |                                                             ^^^^^

@@ -1,0 +1,5 @@
+error: expected `codec`
+ --> tests/ui/bang_unknown_key.rs:2:53
+  |
+2 |     let _ = embark::embed_bytes!("assets/data.bin", format = deflate);
+  |                                                     ^^^^^^

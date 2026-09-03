@@ -1,0 +1,5 @@
+error: unknown codec `bogus`
+ --> tests/ui/derive_unknown_codec.rs:4:29
+  |
+4 | #[embark(folder = "assets", codec = "bogus")]
+  |                             ^^^^^^^^^^^^^^^

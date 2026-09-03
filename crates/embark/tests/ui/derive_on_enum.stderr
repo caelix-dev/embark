@@ -1,0 +1,5 @@
+error: #[derive(Embed)] expects a unit struct, e.g. `struct Assets;`; enums are not supported
+ --> tests/ui/derive_on_enum.rs:7:1
+  |
+7 | enum Assets {
+  | ^^^^

@@ -1,0 +1,5 @@
+error: cipher = aes requires the `aes` feature enabled on `embark`
+ --> tests/ui/crypt_aes_without_feature.rs:2:62
+  |
+2 |     let _ = embark::embed_crypt!("assets/data.bin", cipher = aes);
+  |                                                              ^^^

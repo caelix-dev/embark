@@ -1,0 +1,5 @@
+error: #[derive(Embed)] requires #[embark(folder = "...")]
+ --> tests/ui/derive_missing_folder.rs:4:8
+  |
+4 | struct Assets;
+  |        ^^^^^^
