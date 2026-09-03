@@ -120,3 +120,23 @@ pub(crate) fn seal_with_key(
     );
     entry
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_does_not_print_the_key() {
+        let key = [0x7Fu8; 32];
+        let sealed = Sealed {
+            entry: vec![1, 2, 3],
+            key: Some(key),
+        };
+        let shown = format!("{sealed:?}");
+        assert!(shown.contains("[redacted]"), "{shown}");
+        assert!(
+            !shown.contains("127"),
+            "key material reached Debug: {shown}"
+        );
+    }
+}
