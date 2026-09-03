@@ -34,9 +34,9 @@ use quote::quote;
 ///
 /// `path` is resolved relative to the crate's `CARGO_MANIFEST_DIR`. The
 /// optional `codec = <ident>` argument selects the compressor: `store`,
-/// `deflate`, `lz4`, `snappy`, or `auto` (tries every codec enabled on the
-/// `embark` crate and keeps the smallest output, falling back to `store` if
-/// none of them help).
+/// `deflate`, `lz4`, `snappy`, `zstd`, `lzma`, or `auto` (tries every codec
+/// enabled on the `embark` crate and keeps the smallest output, falling
+/// back to `store` if none of them help).
 ///
 /// **`codec = "auto"` and enabled features:** the codec ident you name here
 /// (explicit, or the winner `auto` picks) must correspond to a codec
@@ -44,8 +44,8 @@ use quote::quote;
 /// enabled, encoding does not fail -- the entry silently degrades to
 /// `store` (uncompressed) instead, since encoding never fails and correct
 /// but uncompressed output is still correct. Enable the matching feature
-/// (`deflate`, `lz4`, `snappy`) if you expect compression to actually
-/// happen.
+/// (`deflate`, `lz4`, `snappy`, `zstd`, `lzma`) if you expect compression
+/// to actually happen.
 #[proc_macro]
 pub fn embed_bytes(input: TokenStream) -> TokenStream {
     let args = syn::parse_macro_input!(input as args::Args);
@@ -64,6 +64,8 @@ pub fn embed_bytes(input: TokenStream) -> TokenStream {
                 args::CodecArg::Deflate => build::build_entry(CodecId::Deflate, &data),
                 args::CodecArg::Lz4 => build::build_entry(CodecId::Lz4, &data),
                 args::CodecArg::Snappy => build::build_entry(CodecId::Snappy, &data),
+                args::CodecArg::Zstd => build::build_entry(CodecId::Zstd, &data),
+                args::CodecArg::Lzma => build::build_entry(CodecId::Lzma, &data),
             };
             let lit = build::bytes_literal(&entry);
             quote!(::embark::EmbeddedBytes::from_entry(#lit)).into()
@@ -98,7 +100,7 @@ pub fn embed_bytes(input: TokenStream) -> TokenStream {
 /// the path, in any order:
 ///
 /// - `codec = <ident>` — compress before sealing (`store`, `deflate`,
-///   `lz4`, `snappy`, or `auto`). Defaults to `deflate` when omitted;
+///   `lz4`, `snappy`, `zstd`, `lzma`, or `auto`). Defaults to `deflate` when omitted;
 ///   `auto` also simplifies to `deflate` here rather than running the full
 ///   codec-selection pass `embed_bytes!` does, since the entry is encrypted
 ///   regardless. The same feature-enablement caveat as `embed_bytes!`
@@ -170,8 +172,9 @@ pub fn embed_crypt(input: TokenStream) -> TokenStream {
 ///   manifest entry, keyed by its path relative to this folder (with `/`
 ///   separators, even on Windows).
 /// - `codec = "..."` — compression for every embedded file: `"store"`,
-///   `"deflate"` (the default), `"lz4"`, `"snappy"`, or `"auto"` (picks
-///   the smallest per-file output among the codecs enabled on `embark`).
+///   `"deflate"` (the default), `"lz4"`, `"snappy"`, `"zstd"`, `"lzma"`, or
+///   `"auto"` (picks the smallest per-file output among the codecs enabled
+///   on `embark`).
 ///   As with `embed_bytes!`, naming a codec whose feature isn't enabled on
 ///   `embark` does not fail the build -- affected entries silently degrade
 ///   to `store` (correct, just uncompressed).

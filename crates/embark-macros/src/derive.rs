@@ -162,6 +162,8 @@ fn parse_config(input: &syn::DeriveInput) -> Config {
                     "deflate" => codec = CodecId::Deflate,
                     "lz4" => codec = CodecId::Lz4,
                     "snappy" => codec = CodecId::Snappy,
+                    "zstd" => codec = CodecId::Zstd,
+                    "lzma" => codec = CodecId::Lzma,
                     other => return Err(meta.error(format!("unknown codec `{other}`"))),
                 }
             } else if meta.path.is_ident("cipher") {

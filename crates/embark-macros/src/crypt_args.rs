@@ -33,6 +33,8 @@ impl CryptArgs {
             Some(crate::args::CodecArg::Deflate) => CodecId::Deflate,
             Some(crate::args::CodecArg::Lz4) => CodecId::Lz4,
             Some(crate::args::CodecArg::Snappy) => CodecId::Snappy,
+            Some(crate::args::CodecArg::Zstd) => CodecId::Zstd,
+            Some(crate::args::CodecArg::Lzma) => CodecId::Lzma,
         }
     }
 
@@ -64,6 +66,8 @@ impl Parse for CryptArgs {
                     "deflate" => crate::args::CodecArg::Deflate,
                     "lz4" => crate::args::CodecArg::Lz4,
                     "snappy" => crate::args::CodecArg::Snappy,
+                    "zstd" => crate::args::CodecArg::Zstd,
+                    "lzma" => crate::args::CodecArg::Lzma,
                     "auto" => crate::args::CodecArg::Auto,
                     other => {
                         return Err(syn::Error::new(

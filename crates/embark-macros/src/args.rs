@@ -6,6 +6,8 @@ pub enum CodecArg {
     Deflate,
     Lz4,
     Snappy,
+    Zstd,
+    Lzma,
     Auto,
 }
 
@@ -31,6 +33,8 @@ impl Parse for Args {
                 "deflate" => CodecArg::Deflate,
                 "lz4" => CodecArg::Lz4,
                 "snappy" => CodecArg::Snappy,
+                "zstd" => CodecArg::Zstd,
+                "lzma" => CodecArg::Lzma,
                 "auto" => CodecArg::Auto,
                 other => {
                     return Err(syn::Error::new(
