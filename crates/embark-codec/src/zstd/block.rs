@@ -1,5 +1,4 @@
-//! Block segmentation and serialization (RFC 8478, sections 3.1.1.2 and
-//! 3.1.1.3).
+//! Block serialization (RFC 8478, sections 3.1.1.2 and 3.1.1.3).
 
 use alloc::vec::Vec;
 
@@ -18,75 +17,21 @@ const RAW_LITERALS: u8 = 0;
 const RLE_LITERALS: u8 = 1;
 const COMPRESSED_LITERALS: u8 = 2;
 
-/// One block: an input range and the sequences that reconstruct it.
-struct Chunk {
+/// Write `input[start..end]` as one block.
+///
+/// `parses` holds one or more ways of encoding the same range; each is
+/// serialized and the smallest kept, which is what lets the parser try
+/// several price models without any of them being able to make things worse.
+pub(super) fn write_one(
+    out: &mut Vec<u8>,
+    input: &[u8],
     start: usize,
     end: usize,
-    seqs: Vec<Match>,
-}
-
-/// Write every block of the frame, marking the last one.
-pub(super) fn write_all(out: &mut Vec<u8>, input: &[u8], matches: &[Match]) {
-    let chunks = plan(input.len(), matches);
-    let mut repeats = [1usize, 4, 8];
-    for (i, chunk) in chunks.iter().enumerate() {
-        write_one(out, input, chunk, &mut repeats, i + 1 == chunks.len());
-    }
-}
-
-/// Cut the sequence stream into blocks of at most [`MAX_BLOCK`] bytes.
-///
-/// A block boundary can only fall between sequences or inside a run of
-/// literals, so a literal run longer than a block is split and its tail
-/// carried into the next one. Matches are already capped short enough to
-/// always fit in a fresh block.
-fn plan(len: usize, matches: &[Match]) -> Vec<Chunk> {
-    let mut chunks = Vec::new();
-    let mut cursor = 0usize;
-    let mut next = 0usize;
-    let mut carried: Option<usize> = None;
-    while cursor < len {
-        let start = cursor;
-        let mut budget = MAX_BLOCK;
-        let mut seqs = Vec::new();
-        loop {
-            let Some(m) = matches.get(next) else {
-                let take = budget.min(len - cursor);
-                cursor += take;
-                break;
-            };
-            let literal_len = carried.unwrap_or(m.literal_len);
-            if literal_len + m.match_len <= budget {
-                budget -= literal_len + m.match_len;
-                cursor += literal_len + m.match_len;
-                seqs.push(Match {
-                    literal_len,
-                    match_len: m.match_len,
-                    offset: m.offset,
-                });
-                next += 1;
-                carried = None;
-                if budget == 0 {
-                    break;
-                }
-            } else {
-                let take = budget.min(literal_len);
-                cursor += take;
-                carried = Some(literal_len - take);
-                break;
-            }
-        }
-        chunks.push(Chunk {
-            start,
-            end: cursor,
-            seqs,
-        });
-    }
-    chunks
-}
-
-fn write_one(out: &mut Vec<u8>, input: &[u8], chunk: &Chunk, repeats: &mut [usize; 3], last: bool) {
-    let raw = &input[chunk.start..chunk.end];
+    parses: &[Vec<Match>],
+    repeats: &mut [usize; 3],
+    last: bool,
+) {
+    let raw = &input[start..end];
     // One repeated byte costs a single byte as an RLE block, which nothing
     // else can beat, so that case never needs the sequence encoder.
     if !raw.is_empty() && raw.iter().all(|&b| b == raw[0]) {
@@ -94,18 +39,32 @@ fn write_one(out: &mut Vec<u8>, input: &[u8], chunk: &Chunk, repeats: &mut [usiz
         out.push(raw[0]);
         return;
     }
-    let mut trial = *repeats;
-    let body = compressed_body(input, chunk, &mut trial);
-    // A `Compressed_Block` is only legal when it is strictly smaller than what
-    // it stands for, which is also the only case in which it is worth using.
-    // Blocks that are not compressed leave the offset history alone.
-    if body.len() < raw.len() {
-        write_header(out, body.len(), COMPRESSED, last);
-        out.extend_from_slice(&body);
-        *repeats = trial;
-    } else {
-        write_header(out, raw.len(), RAW, last);
-        out.extend_from_slice(raw);
+
+    let mut best: Option<(Vec<u8>, [usize; 3])> = None;
+    for parse in parses {
+        let mut trial = *repeats;
+        let body = compressed_body(input, start, end, parse, &mut trial);
+        if best
+            .as_ref()
+            .is_none_or(|(kept, _)| body.len() < kept.len())
+        {
+            best = Some((body, trial));
+        }
+    }
+
+    // A `Compressed_Block` is only legal when it is strictly smaller than
+    // what it stands for, which is also the only case in which it is worth
+    // using. Blocks that are not compressed leave the offset history alone.
+    match best {
+        Some((body, trial)) if body.len() < raw.len() => {
+            write_header(out, body.len(), COMPRESSED, last);
+            out.extend_from_slice(&body);
+            *repeats = trial;
+        }
+        _ => {
+            write_header(out, raw.len(), RAW, last);
+            out.extend_from_slice(raw);
+        }
     }
 }
 
@@ -115,21 +74,28 @@ fn write_header(out: &mut Vec<u8>, size: usize, kind: u8, last: bool) {
 }
 
 /// Build a `Compressed_Block` body: the literals section, then the sequences.
-fn compressed_body(input: &[u8], chunk: &Chunk, repeats: &mut [usize; 3]) -> Vec<u8> {
+fn compressed_body(
+    input: &[u8],
+    start: usize,
+    end: usize,
+    parse: &[Match],
+    repeats: &mut [usize; 3],
+) -> Vec<u8> {
     let mut literals = Vec::new();
-    let mut coded = Vec::with_capacity(chunk.seqs.len());
-    let mut at = chunk.start;
-    for seq in &chunk.seqs {
+    let mut coded = Vec::with_capacity(parse.len());
+    let mut at = start;
+    for seq in parse {
         literals.extend_from_slice(&input[at..at + seq.literal_len]);
         at += seq.literal_len + seq.match_len;
-        let offset = matcher::encode_offset(repeats, seq.offset, seq.literal_len);
+        let (offset, advanced) = matcher::encode_offset(*repeats, seq.offset, seq.literal_len);
+        *repeats = advanced;
         coded.push(Coded::new(
             seq.literal_len as u32,
             seq.match_len as u32,
             offset,
         ));
     }
-    literals.extend_from_slice(&input[at..chunk.end]);
+    literals.extend_from_slice(&input[at..end]);
 
     let mut body = Vec::with_capacity(literals.len() + coded.len() * 4 + 8);
     write_literals(&mut body, &literals);

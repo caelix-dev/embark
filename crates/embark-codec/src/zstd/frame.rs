@@ -1,16 +1,14 @@
-//! Frame header and window sizing (RFC 8478, section 3.1.1.1).
+//! Frame header, window sizing and the block loop (RFC 8478, section
+//! 3.1.1.1).
 
+use alloc::vec;
 use alloc::vec::Vec;
 
 use super::block;
-use super::matcher::{self, Params};
+use super::matcher::{HashChain, Match, Params};
+use super::optimal::{self, Prices};
 
 const MAGIC: u32 = 0xfd2f_b528;
-
-/// Longest input the match finder will parse. Its tables address positions
-/// as `u32`; anything larger is stored rather than searched, which costs
-/// three bytes per block and never happens for a real embedded asset.
-const MAX_PARSED: usize = u32::MAX as usize;
 
 /// Largest window this encoder advertises, as a base-2 logarithm.
 ///
@@ -18,6 +16,16 @@ const MAX_PARSED: usize = u32::MAX as usize;
 /// and it is far under the ceiling our own decoder enforces, so a frame from
 /// here can never be one our own reader refuses.
 const MAX_WINDOW_LOG: u32 = 23;
+
+/// Longest input the match finder will parse. Its tables address positions
+/// as `u32`; anything larger is coded as literals alone, which still shrinks
+/// but finds no matches, and never happens for a real embedded asset.
+const MAX_PARSED: usize = u32::MAX as usize;
+
+/// How many times a block is parsed. Each pass reprices from the parse
+/// before it, and the smallest result is kept, so passes cannot make a block
+/// worse — only slower to encode, which is a build-time cost.
+const PASSES: usize = 4;
 
 /// Encode `input` as one Zstandard frame.
 pub(super) fn encode(input: &[u8]) -> Vec<u8> {
@@ -31,13 +39,49 @@ pub(super) fn encode(input: &[u8]) -> Vec<u8> {
         out.extend_from_slice(&[0x01, 0x00, 0x00]);
         return out;
     }
-    let matches = if len <= MAX_PARSED {
-        matcher::parse(input, window - 1, &Params::for_input(len))
-    } else {
-        Vec::new()
-    };
-    block::write_all(&mut out, input, &matches);
+
+    let params = Params::for_input(len);
+    let mut chain = HashChain::new(len, window, params.hash_bits);
+    let mut repeats = [1usize, 4, 8];
+    let mut at = 0usize;
+    while at < len {
+        let end = (at + block::MAX_BLOCK).min(len);
+        let parses = if len <= MAX_PARSED {
+            parse_block(input, at, end, &mut chain, &params, window - 1, repeats)
+        } else {
+            vec![Vec::new()]
+        };
+        block::write_one(&mut out, input, at, end, &parses, &mut repeats, end == len);
+        at = end;
+    }
     out
+}
+
+/// Parse one block once per price model.
+///
+/// The match candidates are collected once and shared, so the passes differ
+/// only in what they think each choice costs.
+fn parse_block(
+    input: &[u8],
+    start: usize,
+    end: usize,
+    chain: &mut HashChain,
+    params: &Params,
+    max_offset: usize,
+    repeats: [usize; 3],
+) -> Vec<Vec<Match>> {
+    let candidates = optimal::collect(input, start, end, chain, params, max_offset);
+    let block = &input[start..end];
+    let mut prices = Prices::seed(block);
+    let mut parses = Vec::with_capacity(PASSES);
+    for pass in 0..PASSES {
+        let parse = optimal::parse(input, start, end, &candidates, repeats, &prices);
+        if pass + 1 < PASSES {
+            prices = Prices::fit(block, &parse, repeats);
+        }
+        parses.push(parse);
+    }
+    parses
 }
 
 /// Write the frame header and return the window size in bytes.

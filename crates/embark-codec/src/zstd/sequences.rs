@@ -51,6 +51,26 @@ pub(super) struct Coded {
     of_extra: u32,
 }
 
+/// Literals-length code for a run of `len` literals.
+pub(super) fn literal_len_code(len: u32) -> u32 {
+    code_of(&LL_BASE, len)
+}
+
+/// Match-length code for a match of `len` bytes.
+pub(super) fn match_len_code(len: u32) -> u32 {
+    code_of(&ML_BASE, len)
+}
+
+/// Raw bits that follow a literals-length code.
+pub(super) fn literal_len_extra(code: u32) -> u32 {
+    LL_EXTRA[code as usize]
+}
+
+/// Raw bits that follow a match-length code.
+pub(super) fn match_len_extra(code: u32) -> u32 {
+    ML_EXTRA[code as usize]
+}
+
 impl Coded {
     /// Reduce a literals length, a match length and an offset value.
     ///
@@ -58,8 +78,8 @@ impl Coded {
     /// name repeat offsets, and anything larger is a literal distance plus
     /// three (RFC 8478, section 3.1.1.3.2.1.1).
     pub(super) fn new(literal_len: u32, match_len: u32, offset_value: u32) -> Self {
-        let ll_code = code_of(&LL_BASE, literal_len);
-        let ml_code = code_of(&ML_BASE, match_len);
+        let ll_code = literal_len_code(literal_len);
+        let ml_code = match_len_code(match_len);
         let of_code = 31 - offset_value.leading_zeros();
         // The frame's window is capped well below what the predefined
         // offset table covers, so every offset stays representable.
