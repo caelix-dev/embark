@@ -11,11 +11,12 @@ description = "ChaCha20-Poly1305 / AES-256-GCM AEAD wrapper for embark, with bui
 embark-format.workspace = true
 chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
 aes-gcm = { version = "0.10", default-features = false, features = ["alloc", "aes"], optional = true }
+getrandom = { version = "0.3", optional = true }
 
 [features]
 default = []
 alloc = ["embark-format/alloc"]
-enc = ["alloc", "embark-format/enc", "std"]
+enc = ["alloc", "embark-format/enc", "std", "dep:getrandom"]
 dec = ["alloc", "embark-format/dec"]
 std = []
 aes = ["dep:aes-gcm"]
