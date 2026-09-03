@@ -11,6 +11,18 @@ pub struct Manifest {
     pub entry: &'static [u8],
 }
 
+impl Manifest {
+    /// Builds one manifest entry. `const`, so it can be used in the `static`
+    /// manifest the derive macro emits.
+    ///
+    /// Prefer this over the struct literal: `Manifest` is expected to grow
+    /// fields, and going through a constructor is what will let it become
+    /// `#[non_exhaustive]` without breaking every caller.
+    pub const fn new(path: &'static str, entry: &'static [u8]) -> Manifest {
+        Manifest { path, entry }
+    }
+}
+
 /// Implemented by types produced with `#[derive(Embed)]`, giving directory
 /// access to the files embedded from `#[embark(folder = "...")]`.
 ///

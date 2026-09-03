@@ -24,14 +24,8 @@ fn manifest() -> &'static [Manifest] {
     static M: std::sync::OnceLock<Vec<Manifest>> = std::sync::OnceLock::new();
     M.get_or_init(|| {
         let mut v = vec![
-            Manifest {
-                path: "a.txt",
-                entry: entry(CodecId::Store, b"alpha"),
-            },
-            Manifest {
-                path: "b.txt",
-                entry: entry(CodecId::Deflate, &b"beta".repeat(50)),
-            },
+            Manifest::new("a.txt", entry(CodecId::Store, b"alpha")),
+            Manifest::new("b.txt", entry(CodecId::Deflate, &b"beta".repeat(50))),
         ];
         v.sort_by_key(|m| m.path);
         v
@@ -66,4 +60,13 @@ fn entries_is_exact_sized_and_reversible() {
     assert_eq!(it.size_hint(), (2, Some(2)));
     let back: Vec<&str> = Assets::iter().rev().collect();
     assert_eq!(back, ["b.txt", "a.txt"]);
+}
+
+// `Manifest::new` is const, so it works in the `static` manifest the derive
+// macro emits.
+static CONST_MANIFEST: &[Manifest] = &[Manifest::new("c.txt", b"")];
+
+#[test]
+fn manifest_new_is_const() {
+    assert_eq!(CONST_MANIFEST[0].path, "c.txt");
 }

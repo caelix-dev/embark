@@ -4,6 +4,13 @@ use crate::{CodecId, CryptoId};
 #[cfg(feature = "enc")]
 use alloc::vec::Vec;
 
+/// The decoded header of one on-binary entry, as returned by
+/// [`read_header`].
+///
+/// `#[non_exhaustive]`: the on-binary layout is expected to grow (a
+/// content hash, per-entry flags), so fields get added over time. Read the
+/// fields you need; do not build one by hand or match it exhaustively.
+#[non_exhaustive]
 pub struct Header {
     pub codec: CodecId,
     pub crypto: CryptoId,
