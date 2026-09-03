@@ -4,12 +4,16 @@ use embark_crypt::{seal, xor32};
 use embark_format::{write_entry, CodecId, CryptoId};
 
 fn encrypted_entry(plain: &[u8], key: [u8; 32], nonce: [u8; 12]) -> Vec<u8> {
-    let (ct, tag) = seal(&key, &nonce, plain);
+    encrypted_entry_with(CryptoId::ChaCha20Poly1305, plain, key, nonce)
+}
+
+fn encrypted_entry_with(crypto: CryptoId, plain: &[u8], key: [u8; 32], nonce: [u8; 12]) -> Vec<u8> {
+    let (ct, tag) = seal(crypto, &key, &nonce, plain);
     let mut entry = Vec::new();
     write_entry(
         &mut entry,
         CodecId::Store,
-        CryptoId::ChaCha20Poly1305,
+        crypto,
         plain.len() as u64,
         Some((nonce, tag)),
         &ct,
@@ -43,3 +47,16 @@ fn runtime_key_decrypts_and_rejects_wrong() {
 // on a runtime-key handle is a compile error, not a runtime panic. See the
 // `compile_fail` doctest on `EncryptedFile::<RuntimeKey>::with_runtime_key`
 // in `crates/embark/src/encrypted.rs` for a checked demonstration of that.
+
+#[cfg(feature = "aes")]
+#[test]
+fn aes_embedded_key_decrypts() {
+    let key = [0x77u8; 32];
+    let mask = [0x18u8; 32];
+    let masked = xor32(&key, &mask);
+    let entry: &'static [u8] = Box::leak(
+        encrypted_entry_with(CryptoId::Aes256Gcm, b"aes secret", key, [4u8; 12]).into_boxed_slice(),
+    );
+    let f = EncryptedFile::with_embedded_key(entry, masked, mask);
+    assert_eq!(f.decrypt(), b"aes secret");
+}

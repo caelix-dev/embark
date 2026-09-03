@@ -29,6 +29,7 @@ snappy = ["embark-codec/snappy", "embark-macros?/snappy"]
 zstd = ["embark-codec/zstd", "embark-macros?/zstd"]
 lzma = ["embark-codec/lzma", "embark-macros?/lzma"]
 encryption = ["dep:embark-crypt", "embark-crypt/dec"]
+aes = ["encryption", "embark-crypt/aes", "embark-macros?/aes"]
 metadata = []
 
 [[example]]

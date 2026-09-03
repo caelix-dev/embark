@@ -9,21 +9,32 @@ pub(crate) fn decode(
     let header = read_header(entry)?;
     let payload = &entry[header.payload_offset..];
 
-    // Decryption stage (only when the entry is encrypted).
+    // Decryption stage (only when the entry is encrypted). Both AEAD
+    // ciphers dispatch through the same `embark_crypt::open`, keyed by
+    // `header.crypto`; a cipher whose feature isn't enabled on `embark`
+    // (e.g. `Aes256Gcm` without the `aes` feature) surfaces as
+    // `Error::UnknownCrypto` from that dispatch, not a compile-time branch
+    // here.
     let plaintext: Cow<'static, [u8]> = match header.crypto {
         CryptoId::None => Cow::Borrowed(payload),
-        CryptoId::ChaCha20Poly1305 => {
+        CryptoId::ChaCha20Poly1305 | CryptoId::Aes256Gcm => {
             #[cfg(feature = "encryption")]
             {
                 let key = key.ok_or(Error::Auth)?;
                 let nonce = header.nonce.ok_or(Error::Corrupt)?;
                 let tag = header.tag.ok_or(Error::Corrupt)?;
-                Cow::Owned(embark_crypt::open(&key, &nonce, payload, &tag)?)
+                Cow::Owned(embark_crypt::open(
+                    header.crypto,
+                    &key,
+                    &nonce,
+                    payload,
+                    &tag,
+                )?)
             }
             #[cfg(not(feature = "encryption"))]
             {
                 let _ = key;
-                return Err(Error::UnknownCrypto(CryptoId::ChaCha20Poly1305.as_u8()));
+                return Err(Error::UnknownCrypto(header.crypto.as_u8()));
             }
         }
     };

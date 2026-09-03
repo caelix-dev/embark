@@ -27,6 +27,9 @@
 //! - `deflate`, `lz4`, `snappy` — compression codecs (opt-in, pay for what
 //!   you use).
 //! - `encryption` — ChaCha20-Poly1305 AEAD support ([`EncryptedFile`]).
+//! - `aes` — adds AES-256-GCM as a second AEAD cipher, selected per entry
+//!   with `embed_crypt!(..., cipher = aes)` or `#[embark(encrypt, cipher =
+//!   "aes")]` (implies `encryption`).
 //! - `metadata` — per-file [`EmbeddedFile::hash`] and [`EmbeddedFile::mime`].
 #![forbid(unsafe_code)]
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -67,6 +70,8 @@ pub use embark_codec::Lzma;
 pub use embark_codec::Snappy;
 #[cfg(feature = "zstd")]
 pub use embark_codec::Zstd;
+#[cfg(feature = "aes")]
+pub use embark_crypt::Aes256Gcm;
 #[cfg(feature = "encryption")]
 pub use embark_crypt::{Aead, ChaCha20Poly1305};
 
