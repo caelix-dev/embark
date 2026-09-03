@@ -1,3 +1,10 @@
+/// Appends `value` to `out` as an unsigned LEB128 varint: seven bits of
+/// payload per byte, little-endian, with the high bit set on every byte but
+/// the last.
+///
+/// Costs one byte for values under 128 and at most ten for `u64::MAX`,
+/// which is why entry lengths are stored this way rather than as a fixed
+/// eight bytes.
 #[cfg(feature = "alloc")]
 pub fn write_varint(out: &mut alloc::vec::Vec<u8>, mut value: u64) {
     loop {
@@ -11,6 +18,19 @@ pub fn write_varint(out: &mut alloc::vec::Vec<u8>, mut value: u64) {
     }
 }
 
+/// Reads one unsigned LEB128 varint from the front of `input`, returning
+/// the value and how many bytes it occupied.
+///
+/// Trailing bytes are ignored, so the caller advances by the returned
+/// count to reach whatever follows.
+///
+/// # Errors
+///
+/// Returns [`Error::Truncated`](crate::Error::Truncated) if the
+/// continuation bit is still set when `input` runs out, and
+/// [`Error::Corrupt`](crate::Error::Corrupt) if the encoding runs past the
+/// ten bytes a `u64` can need, which would otherwise let a hostile entry
+/// shift bits off the end.
 pub fn read_varint(input: &[u8]) -> crate::Result<(u64, usize)> {
     let mut value: u64 = 0;
     for (i, &byte) in input.iter().enumerate() {

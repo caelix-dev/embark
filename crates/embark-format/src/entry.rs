@@ -11,15 +11,36 @@ use alloc::vec::Vec;
 /// content hash, per-entry flags), so fields get added over time. Read the
 /// fields you need; do not build one by hand or match it exhaustively.
 #[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Header {
+    /// The compression applied to the payload.
     pub codec: CodecId,
+    /// The AEAD cipher the payload was sealed with, if any.
     pub crypto: CryptoId,
+    /// Length of the file *before* compression and encryption, in bytes.
+    ///
+    /// Decoders use it to size the output buffer, so it comes from
+    /// untrusted bytes and must be treated as a claim rather than a fact:
+    /// reserve fallibly, and check the decoded length against it.
     pub orig_len: u64,
+    /// The AEAD nonce, present exactly when `crypto` is not
+    /// [`CryptoId::None`]. Stored in the clear, and unique per entry.
     pub nonce: Option<[u8; 12]>,
+    /// The detached AEAD authentication tag, present under the same
+    /// condition as `nonce`.
     pub tag: Option<[u8; 16]>,
+    /// Offset into the entry at which the payload begins, that is the
+    /// length of the header this `Header` was parsed from.
     pub payload_offset: usize,
 }
 
+/// Appends one complete entry -- header followed by `payload` -- to `out`.
+///
+/// `orig_len` is the length of the file before compression, and `nonce_tag`
+/// carries the AEAD nonce and tag when the payload was sealed. Pass `None`
+/// for a plaintext entry; `crypto` and `nonce_tag` have to agree, since
+/// [`read_header`] decides whether to expect the 28 nonce-and-tag bytes from
+/// `crypto` alone.
 #[cfg(feature = "enc")]
 pub fn write_entry(
     out: &mut Vec<u8>,
@@ -38,6 +59,21 @@ pub fn write_entry(
     out.extend_from_slice(payload);
 }
 
+/// Parses the header at the front of `entry`.
+///
+/// Only the header is examined; the payload is left to the caller, which
+/// finds it at [`Header::payload_offset`]. Nothing is copied out of the
+/// payload and no allocation happens here, so this is cheap enough to call
+/// just to read [`Header::orig_len`].
+///
+/// # Errors
+///
+/// Returns [`Error::Truncated`](crate::Error::Truncated) if `entry` is
+/// shorter than the header it declares, [`Error::Corrupt`](crate::Error::Corrupt)
+/// if the length varint is malformed, and
+/// [`Error::UnknownCodec`](crate::Error::UnknownCodec) or
+/// [`Error::UnknownCrypto`](crate::Error::UnknownCrypto) if the tag byte
+/// names an unassigned id.
 #[cfg(feature = "dec")]
 pub fn read_header(entry: &[u8]) -> Result<Header> {
     let tag_byte = *entry.first().ok_or(crate::Error::Truncated)?;
