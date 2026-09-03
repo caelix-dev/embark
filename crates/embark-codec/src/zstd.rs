@@ -19,7 +19,14 @@ pub fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
         return Ok(Vec::new());
     }
     let mut decoder = ruzstd::decoding::StreamingDecoder::new(input).map_err(|_| Error::Corrupt)?;
-    let mut out = alloc::vec![0u8; orig_len];
+    // `orig_len` comes straight from the (attacker-controllable) entry header,
+    // so size the buffer through a fallible reservation: a claim like 1 TiB
+    // becomes a returned `Error::Corrupt` instead of an eager allocation that
+    // aborts the process on failure.
+    let mut out: Vec<u8> = Vec::new();
+    out.try_reserve_exact(orig_len)
+        .map_err(|_| Error::Corrupt)?;
+    out.resize(orig_len, 0u8);
     decoder.read_exact(&mut out).map_err(|_| Error::Corrupt)?;
     Ok(out)
 }
@@ -87,5 +94,29 @@ mod tests {
     #[test]
     fn garbage_is_corrupt() {
         assert!(decompress(&[0xff, 0xff, 0xff, 0xff], 10).is_err());
+    }
+
+    #[test]
+    fn roundtrip_large_real_data() {
+        // A legitimate large payload must still round-trip through the
+        // fallible-reservation path -- a bound that rejects real data would
+        // be worse than the bug it fixes.
+        let data = b"the quick brown fox jumps over the lazy dog ".repeat(200_000);
+        let c = compress(&data);
+        assert_eq!(decompress(&c, data.len()).unwrap(), data);
+    }
+
+    #[test]
+    fn hostile_orig_len_does_not_over_allocate() {
+        // A tiny input claiming an impossible orig_len fails during frame
+        // parsing before ever reaching the allocation -- that alone doesn't
+        // prove the allocation is bounded. Use a *valid* zstd frame for a
+        // small plaintext, paired with a huge caller-supplied orig_len, so
+        // the frame header check is passed and the fallible reservation is
+        // the thing actually under test. Before the fix this called
+        // `vec![0u8; orig_len]` and aborted the process.
+        let c = compress(b"tiny");
+        let hostile_orig_len = 1usize << 40; // 1 TiB
+        assert!(decompress(&c, hostile_orig_len).is_err());
     }
 }
