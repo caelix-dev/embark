@@ -7,6 +7,11 @@ use embark_format::Result;
 /// hand. `path` is the file's path relative to the folder given in
 /// `#[embark(folder = "...")]`, and `entry` is the encoded (header +
 /// payload) bytes for the file.
+///
+/// `#[non_exhaustive]`: fields are expected to be added (a content hash, a
+/// per-file codec override), so build one with [`Manifest::new`] rather
+/// than a struct literal. Reading the fields you need stays fine.
+#[non_exhaustive]
 pub struct Manifest {
     /// The file's path relative to the embedded folder, always with `/`
     /// separators regardless of the platform the build ran on.
@@ -32,9 +37,9 @@ impl Manifest {
     /// Builds one manifest entry. `const`, so it can be used in the `static`
     /// manifest the derive macro emits.
     ///
-    /// Prefer this over the struct literal: `Manifest` is expected to grow
-    /// fields, and going through a constructor is what will let it become
-    /// `#[non_exhaustive]` without breaking every caller.
+    /// The only way to build one: `Manifest` is `#[non_exhaustive]`, so a
+    /// struct literal will not compile from another crate. Fields added
+    /// later take a default here rather than breaking every caller.
     #[must_use]
     pub const fn new(path: &'static str, entry: &'static [u8]) -> Manifest {
         Manifest { path, entry }

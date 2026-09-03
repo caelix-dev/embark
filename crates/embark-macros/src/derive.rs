@@ -52,7 +52,7 @@ pub(crate) fn expand(input: &syn::DeriveInput) -> syn::Result<proc_macro2::Token
         };
         let lit = build::bytes_literal(&entry);
         manifest_items.push(quote! {
-            ::embark::Manifest { path: #rel, entry: #lit }
+            ::embark::Manifest::new(#rel, #lit)
         });
         tracked.push(build::track_file(abs, folder_span)?);
     }
