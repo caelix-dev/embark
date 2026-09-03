@@ -70,8 +70,8 @@ pub fn embed_bytes(input: TokenStream) -> TokenStream {
     }
 }
 
-/// Embeds a single file, encrypted at build time with ChaCha20-Poly1305,
-/// expanding to an
+/// Embeds a single file, encrypted at build time with ChaCha20-Poly1305 (or,
+/// with `cipher = aes`, AES-256-GCM), expanding to an
 /// [`EncryptedFile`](https://docs.rs/embark/*/embark/struct.EncryptedFile.html),
 /// generic over a type-state marker
 /// ([`EmbeddedKey`](https://docs.rs/embark/*/embark/struct.EmbeddedKey.html)
@@ -93,8 +93,8 @@ pub fn embed_bytes(input: TokenStream) -> TokenStream {
 /// ```
 ///
 /// `path` is resolved relative to `CARGO_MANIFEST_DIR`, as in
-/// [`embed_bytes!`]. Two independent, comma-separated arguments may follow
-/// the path, in either order:
+/// [`embed_bytes!`]. Independent, comma-separated arguments may follow
+/// the path, in any order:
 ///
 /// - `codec = <ident>` — compress before sealing (`store`, `deflate`,
 ///   `lz4`, `snappy`, or `auto`). Defaults to `deflate` when omitted;
@@ -103,6 +103,12 @@ pub fn embed_bytes(input: TokenStream) -> TokenStream {
 ///   regardless. The same feature-enablement caveat as `embed_bytes!`
 ///   applies: if the named codec's feature isn't enabled on `embark`, the
 ///   entry silently degrades to `store` instead of failing to build.
+/// - `cipher = <ident>` — the AEAD cipher to seal with: `chacha`
+///   (ChaCha20-Poly1305, the default) or `aes` (AES-256-GCM). Both share
+///   the same key/nonce/tag shape and threat model — see the module docs'
+///   security note. `cipher = aes` requires the `aes` feature enabled on
+///   `embark`; naming it without that feature is a build error, not a
+///   silent fallback (unlike an unavailable codec).
 /// - `key = runtime` — opt into the runtime-key mode: no key material is
 ///   embedded, and the resulting handle (an `EncryptedFile<RuntimeKey>`)
 ///   must be decrypted with `decrypt_with(&key)` -- it has no `decrypt()`
@@ -117,12 +123,13 @@ pub fn embed_crypt(input: TokenStream) -> TokenStream {
     let parsed = syn::parse_macro_input!(input as crypt_args::CryptArgs);
     let data = build::read(&parsed.path);
     let codec = parsed.codec_id();
+    let crypto = parsed.crypto_id();
     let mode = if parsed.runtime_key {
         crypt::KeyMode::Runtime
     } else {
         crypt::KeyMode::BuildTime
     };
-    let sealed = crypt::seal_file(&data, codec, mode);
+    let sealed = crypt::seal_file(&data, codec, crypto, mode);
     let entry_lit = build::bytes_literal(&sealed.entry);
     match sealed.masked_mask {
         Some((masked, mask)) => {
@@ -171,6 +178,12 @@ fn array32(bytes: &[u8; 32]) -> proc_macro2::TokenStream {
 ///   `EncryptedFile::decrypt()`. There is currently no per-derive
 ///   `key = runtime` option; use `embed_crypt!` directly for runtime-key
 ///   files.
+/// - `cipher = "..."` — the AEAD cipher `encrypt` seals with: `"chacha"`
+///   (ChaCha20-Poly1305, the default) or `"aes"` (AES-256-GCM). Ignored
+///   without `encrypt`. Both share the same threat model -- see the
+///   module docs' security note. `cipher = "aes"` requires the `aes`
+///   feature enabled on `embark`; naming it without that feature is a
+///   build error.
 /// - `dev` — in debug builds only, `get()` reads the file live from disk
 ///   (relative to `folder`) instead of returning the compiled-in copy, for
 ///   fast iteration without rebuilding. Has no effect in release builds.

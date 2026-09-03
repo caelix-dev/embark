@@ -1,13 +1,21 @@
-use embark_format::CodecId;
+use embark_format::{CodecId, CryptoId};
 use syn::parse::{Parse, ParseStream};
 use syn::{LitStr, Token};
 
+/// The `cipher = ...` argument: which AEAD cipher to seal with.
+pub enum CipherArg {
+    ChaCha,
+    Aes,
+}
+
 /// Parses `embed_crypt!` arguments: a path literal, optionally followed by
-/// `, codec = <ident>` and/or `, key = runtime`, in either order. Modeled on
-/// `args::Args`, with the addition of the `key = runtime` flag.
+/// `, codec = <ident>`, `, cipher = <ident>`, and/or `, key = runtime`, in
+/// any order. Modeled on `args::Args`, with the addition of the `cipher`
+/// and `key = runtime` options.
 pub struct CryptArgs {
     pub path: String,
     pub codec: Option<crate::args::CodecArg>,
+    pub cipher: Option<CipherArg>,
     pub runtime_key: bool,
 }
 
@@ -27,12 +35,22 @@ impl CryptArgs {
             Some(crate::args::CodecArg::Snappy) => CodecId::Snappy,
         }
     }
+
+    /// The AEAD cipher to seal with. Defaults to `ChaCha20Poly1305` when
+    /// unspecified.
+    pub fn crypto_id(&self) -> CryptoId {
+        match self.cipher {
+            None | Some(CipherArg::ChaCha) => CryptoId::ChaCha20Poly1305,
+            Some(CipherArg::Aes) => CryptoId::Aes256Gcm,
+        }
+    }
 }
 
 impl Parse for CryptArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let path: LitStr = input.parse()?;
         let mut codec = None;
+        let mut cipher = None;
         let mut runtime_key = false;
 
         while input.peek(Token![,]) {
@@ -54,6 +72,26 @@ impl Parse for CryptArgs {
                         ))
                     }
                 });
+            } else if key == "cipher" {
+                let val: syn::Ident = input.parse()?;
+                cipher = Some(match val.to_string().as_str() {
+                    "chacha" => CipherArg::ChaCha,
+                    "aes" => {
+                        if !cfg!(feature = "aes") {
+                            return Err(syn::Error::new(
+                                val.span(),
+                                "cipher = aes requires the `aes` feature enabled on `embark`",
+                            ));
+                        }
+                        CipherArg::Aes
+                    }
+                    other => {
+                        return Err(syn::Error::new(
+                            val.span(),
+                            format!("unknown cipher `{other}`"),
+                        ))
+                    }
+                });
             } else if key == "key" {
                 let val: syn::Ident = input.parse()?;
                 if val != "runtime" {
@@ -61,13 +99,17 @@ impl Parse for CryptArgs {
                 }
                 runtime_key = true;
             } else {
-                return Err(syn::Error::new(key.span(), "expected `codec` or `key`"));
+                return Err(syn::Error::new(
+                    key.span(),
+                    "expected `codec`, `cipher`, or `key`",
+                ));
             }
         }
 
         Ok(CryptArgs {
             path: path.value(),
             codec,
+            cipher,
             runtime_key,
         })
     }

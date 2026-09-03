@@ -1,11 +1,12 @@
 use crate::{build, crypt, glob};
-use embark_format::CodecId;
+use embark_format::{CodecId, CryptoId};
 use quote::quote;
 use std::path::Path;
 
 struct Config {
     folder: String,
     codec: CodecId,
+    cipher: CryptoId,
     auto: bool,
     encrypt: bool,
     dev: bool,
@@ -40,7 +41,7 @@ pub fn expand(input: syn::DeriveInput) -> proc_macro2::TokenStream {
     for (rel, abs) in &files {
         let data = std::fs::read(abs).expect("embark: read file during derive");
         let entry = if let Some(key) = key_material {
-            crypt::seal_with_key(&data, cfg.codec, key)
+            crypt::seal_with_key(&data, cfg.codec, cfg.cipher, key)
         } else if cfg.auto {
             build::build_entry_best(&data)
         } else {
@@ -138,6 +139,7 @@ fn array32(bytes: &[u8; 32]) -> proc_macro2::TokenStream {
 fn parse_config(input: &syn::DeriveInput) -> Config {
     let mut folder: Option<String> = None;
     let mut codec = CodecId::Deflate;
+    let mut cipher = CryptoId::ChaCha20Poly1305;
     let mut auto = false;
     let mut encrypt = false;
     let mut dev = false;
@@ -162,6 +164,20 @@ fn parse_config(input: &syn::DeriveInput) -> Config {
                     "snappy" => codec = CodecId::Snappy,
                     other => return Err(meta.error(format!("unknown codec `{other}`"))),
                 }
+            } else if meta.path.is_ident("cipher") {
+                let s: syn::LitStr = meta.value()?.parse()?;
+                match s.value().as_str() {
+                    "chacha" => cipher = CryptoId::ChaCha20Poly1305,
+                    "aes" => {
+                        if !cfg!(feature = "aes") {
+                            return Err(meta.error(
+                                "cipher = \"aes\" requires the `aes` feature enabled on `embark`",
+                            ));
+                        }
+                        cipher = CryptoId::Aes256Gcm;
+                    }
+                    other => return Err(meta.error(format!("unknown cipher `{other}`"))),
+                }
             } else if meta.path.is_ident("encrypt") {
                 encrypt = true;
             } else if meta.path.is_ident("dev") {
@@ -183,6 +199,7 @@ fn parse_config(input: &syn::DeriveInput) -> Config {
     Config {
         folder: folder.expect("embark: #[derive(Embed)] requires #[embark(folder = \"...\")]"),
         codec,
+        cipher,
         auto,
         encrypt,
         dev,

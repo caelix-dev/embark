@@ -11,7 +11,7 @@ pub(crate) struct Sealed {
     pub masked_mask: Option<([u8; 32], [u8; 32])>,
 }
 
-pub(crate) fn seal_file(data: &[u8], codec: CodecId, mode: KeyMode) -> Sealed {
+pub(crate) fn seal_file(data: &[u8], codec: CodecId, crypto: CryptoId, mode: KeyMode) -> Sealed {
     // Compress first (never grow), then encrypt the compressed payload.
     let compressed = embark_codec::compress(codec, data);
     let (codec, compressed) = if compressed.len() < data.len() {
@@ -33,12 +33,12 @@ pub(crate) fn seal_file(data: &[u8], codec: CodecId, mode: KeyMode) -> Sealed {
         }
     };
 
-    let (ct, tag) = seal(&key, &nonce, &compressed);
+    let (ct, tag) = seal(crypto, &key, &nonce, &compressed);
     let mut entry = Vec::new();
     write_entry(
         &mut entry,
         codec,
-        CryptoId::ChaCha20Poly1305,
+        crypto,
         data.len() as u64,
         Some((nonce, tag)),
         &ct,
@@ -67,7 +67,12 @@ fn env_key() -> [u8; 32] {
 // Used by derive(Embed) with #[embark(encrypt)]: every file in the folder is
 // sealed under one caller-supplied build-time key (obfuscated in the manifest
 // via masked/mask emitted by the derive). Returns just the entry bytes.
-pub(crate) fn seal_with_key(data: &[u8], codec: CodecId, key: [u8; 32]) -> Vec<u8> {
+pub(crate) fn seal_with_key(
+    data: &[u8],
+    codec: CodecId,
+    crypto: CryptoId,
+    key: [u8; 32],
+) -> Vec<u8> {
     let compressed = embark_codec::compress(codec, data);
     let (codec, compressed) = if compressed.len() < data.len() {
         (codec, compressed)
@@ -75,12 +80,12 @@ pub(crate) fn seal_with_key(data: &[u8], codec: CodecId, key: [u8; 32]) -> Vec<u
         (CodecId::Store, data.to_vec())
     };
     let (_, nonce) = gen_key_nonce(); // fresh per-file nonce
-    let (ct, tag) = seal(&key, &nonce, &compressed);
+    let (ct, tag) = seal(crypto, &key, &nonce, &compressed);
     let mut entry = Vec::new();
     write_entry(
         &mut entry,
         codec,
-        CryptoId::ChaCha20Poly1305,
+        crypto,
         data.len() as u64,
         Some((nonce, tag)),
         &ct,
