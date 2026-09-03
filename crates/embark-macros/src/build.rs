@@ -192,3 +192,58 @@ pub(crate) fn build_entry_best(data: &[u8], shown: &str, span: Span) -> syn::Res
 pub(crate) fn bytes_literal(bytes: &[u8]) -> proc_macro2::Literal {
     proc_macro2::Literal::byte_string(bytes)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const DATA: &[u8] = b"embark verifies that the decoder can read the encoder";
+
+    // Store's payload is the input verbatim, so a flipped byte lands at an
+    // offset known in advance -- the one the diagnostic has to name.
+    #[test]
+    fn a_corrupted_payload_names_the_path_the_codec_and_the_offset() {
+        let mut payload = DATA.to_vec();
+        payload[12] ^= 0x01;
+        let err = verify_decode(
+            CodecId::Store,
+            DATA,
+            &payload,
+            "assets/logo.png",
+            Span::call_site(),
+        )
+        .expect_err("a flipped byte must not verify");
+
+        let msg = err.to_string();
+        assert!(msg.contains("assets/logo.png"), "{msg}");
+        assert!(msg.contains("store"), "{msg}");
+        assert!(msg.contains("byte 12"), "{msg}");
+    }
+
+    // A length disagreement is caught by the decoder itself rather than by
+    // the comparison below it, so this lands on the "decoding failed" arm.
+    #[test]
+    fn a_truncated_payload_is_reported_as_a_decoder_rejection() {
+        let err = verify_decode(
+            CodecId::Store,
+            DATA,
+            &DATA[..DATA.len() - 1],
+            "assets/logo.png",
+            Span::call_site(),
+        )
+        .expect_err("a truncated payload must not verify");
+
+        let msg = err.to_string();
+        assert!(msg.contains("assets/logo.png"), "{msg}");
+        assert!(msg.contains("decoding failed"), "{msg}");
+    }
+
+    #[test]
+    fn an_untouched_payload_verifies() {
+        let (codec, payload) =
+            compress_verified(CodecId::Store, DATA, "assets/logo.png", Span::call_site())
+                .expect("store must round-trip");
+        assert_eq!(codec, CodecId::Store);
+        assert_eq!(payload, DATA);
+    }
+}
