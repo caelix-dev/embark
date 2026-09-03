@@ -1,14 +1,11 @@
-//! The full set of LZMA1 adaptive probabilities plus the length sub-coder.
-//! Shared by the decoder and encoder so both drive an identical model.
+//! The full set of LZMA1 adaptive probabilities plus the length sub-coder,
+//! driven by the decoder.
 
 extern crate alloc;
 use alloc::vec;
 use alloc::vec::Vec;
 
-#[cfg(feature = "dec")]
 use super::rangecoder::RangeDecoder;
-#[cfg(feature = "enc")]
-use super::rangecoder::RangeEncoder;
 
 /// Initial probability: `kBitModelTotal / 2 = 2048 / 2`.
 const INIT_PROB: u16 = 1024;
@@ -24,13 +21,10 @@ const NUM_FULL_DISTANCES: usize = 1 << (END_POS_MODEL_INDEX >> 1);
 /// `1 + kNumFullDistances - kEndPosModelIndex` = 115.
 const SPEC_POS_LEN: usize = 1 + NUM_FULL_DISTANCES - END_POS_MODEL_INDEX as usize;
 pub(crate) const MATCH_MIN_LEN: usize = 2;
-/// Longest match LZMA can code: `MATCH_MIN_LEN + 271`.
-#[cfg(feature = "enc")]
-pub(crate) const MATCH_MAX_LEN: usize = MATCH_MIN_LEN + 271;
 
-/// The length sub-coder (used both for new matches and rep matches). Returns /
-/// consumes a raw length symbol in `0..=271`; the true match length is that
-/// plus `MATCH_MIN_LEN`.
+/// The length sub-coder (used both for new matches and rep matches). Returns
+/// a raw length symbol in `0..=271`; the true match length is that plus
+/// `MATCH_MIN_LEN`.
 struct LenCoder {
     choice: u16,
     choice2: u16,
@@ -50,7 +44,6 @@ impl LenCoder {
         }
     }
 
-    #[cfg(feature = "dec")]
     fn decode(&mut self, rc: &mut RangeDecoder<'_>, pos_state: usize) -> usize {
         if rc.decode_bit(&mut self.choice) == 0 {
             rc.decode_bittree(&mut self.low[pos_state], 3) as usize
@@ -60,26 +53,10 @@ impl LenCoder {
             16 + rc.decode_bittree(&mut self.high, 8) as usize
         }
     }
-
-    #[cfg(feature = "enc")]
-    fn encode(&mut self, rc: &mut RangeEncoder, sym: usize, pos_state: usize) {
-        if sym < 8 {
-            rc.encode_bit(&mut self.choice, 0);
-            rc.encode_bittree(&mut self.low[pos_state], sym as u32, 3);
-        } else if sym < 16 {
-            rc.encode_bit(&mut self.choice, 1);
-            rc.encode_bit(&mut self.choice2, 0);
-            rc.encode_bittree(&mut self.mid[pos_state], (sym - 8) as u32, 3);
-        } else {
-            rc.encode_bit(&mut self.choice, 1);
-            rc.encode_bit(&mut self.choice2, 1);
-            rc.encode_bittree(&mut self.high, (sym - 16) as u32, 8);
-        }
-    }
 }
 
 /// Every adaptive probability in an LZMA1 stream. `lc`/`lp`/`pb` are taken
-/// from the `.lzma` header on decode and fixed at 3/0/2 on encode.
+/// from the `.lzma` header.
 pub(crate) struct LzmaModel {
     lc: u32,
     lp_mask: u32,
@@ -91,17 +68,10 @@ pub(crate) struct LzmaModel {
     is_match: [[u16; POS_STATES_MAX]; NUM_STATES],
     is_rep: [u16; NUM_STATES],
     len_coder: LenCoder,
-    // Rep-match / short-rep probabilities. The encoder emits only literals and
-    // new matches, so these are consumed on the decode side only.
-    #[cfg(feature = "dec")]
     is_rep_g0: [u16; NUM_STATES],
-    #[cfg(feature = "dec")]
     is_rep_g1: [u16; NUM_STATES],
-    #[cfg(feature = "dec")]
     is_rep_g2: [u16; NUM_STATES],
-    #[cfg(feature = "dec")]
     is_rep0_long: [[u16; POS_STATES_MAX]; NUM_STATES],
-    #[cfg(feature = "dec")]
     rep_len_coder: LenCoder,
 }
 
@@ -119,15 +89,10 @@ impl LzmaModel {
             is_match: [[INIT_PROB; POS_STATES_MAX]; NUM_STATES],
             is_rep: [INIT_PROB; NUM_STATES],
             len_coder: LenCoder::new(),
-            #[cfg(feature = "dec")]
             is_rep_g0: [INIT_PROB; NUM_STATES],
-            #[cfg(feature = "dec")]
             is_rep_g1: [INIT_PROB; NUM_STATES],
-            #[cfg(feature = "dec")]
             is_rep_g2: [INIT_PROB; NUM_STATES],
-            #[cfg(feature = "dec")]
             is_rep0_long: [[INIT_PROB; POS_STATES_MAX]; NUM_STATES],
-            #[cfg(feature = "dec")]
             rep_len_coder: LenCoder::new(),
         }
     }
@@ -146,9 +111,6 @@ impl LzmaModel {
     }
 }
 
-// --- decode-side model operations ---
-
-#[cfg(feature = "dec")]
 impl LzmaModel {
     #[inline]
     pub(crate) fn decode_is_match(
@@ -257,95 +219,4 @@ impl LzmaModel {
         }
         dist
     }
-}
-
-// --- encode-side model operations ---
-
-#[cfg(feature = "enc")]
-impl LzmaModel {
-    #[inline]
-    pub(crate) fn encode_is_match(&mut self, rc: &mut RangeEncoder, st: usize, ps: usize, b: u32) {
-        rc.encode_bit(&mut self.is_match[st][ps], b);
-    }
-
-    #[inline]
-    pub(crate) fn encode_is_rep(&mut self, rc: &mut RangeEncoder, st: usize, b: u32) {
-        rc.encode_bit(&mut self.is_rep[st], b);
-    }
-
-    #[inline]
-    pub(crate) fn encode_new_len(&mut self, rc: &mut RangeEncoder, sym: usize, ps: usize) {
-        self.len_coder.encode(rc, sym, ps);
-    }
-
-    /// Encode one normal or matched literal (mirrors `decode_literal`).
-    pub(crate) fn encode_literal(
-        &mut self,
-        rc: &mut RangeEncoder,
-        total_pos: usize,
-        prev_byte: u8,
-        state: usize,
-        byte: u8,
-        match_byte: u8,
-    ) {
-        let ls = self.lit_state(total_pos, prev_byte);
-        let probs = &mut self.lit[ls * 0x300..ls * 0x300 + 0x300];
-        let mut ctx = 1usize;
-        if state < 7 {
-            for bpos in (0..8).rev() {
-                let bit = ((byte >> bpos) & 1) as u32;
-                rc.encode_bit(&mut probs[ctx], bit);
-                ctx = (ctx << 1) | bit as usize;
-            }
-        } else {
-            let mut same = true;
-            for bpos in (0..8).rev() {
-                let bit = ((byte >> bpos) & 1) as u32;
-                if same {
-                    let mbit = ((match_byte >> bpos) & 1) as usize;
-                    rc.encode_bit(&mut probs[((1 + mbit) << 8) + ctx], bit);
-                    ctx = (ctx << 1) | bit as usize;
-                    if mbit as u32 != bit {
-                        same = false;
-                    }
-                } else {
-                    rc.encode_bit(&mut probs[ctx], bit);
-                    ctx = (ctx << 1) | bit as usize;
-                }
-            }
-        }
-    }
-
-    /// Encode the distance for a new match (mirrors `decode_distance`).
-    pub(crate) fn encode_distance(&mut self, rc: &mut RangeEncoder, dist: u32, len_sym: usize) {
-        let len_state = len_sym.min(NUM_LEN_TO_POS - 1);
-        let pos_slot = get_pos_slot(dist);
-        rc.encode_bittree(&mut self.pos_slot[len_state], pos_slot, 6);
-        if pos_slot >= 4 {
-            let num_direct = (pos_slot >> 1) - 1;
-            let base = (2 | (pos_slot & 1)) << num_direct;
-            if pos_slot < END_POS_MODEL_INDEX {
-                let off = (base - pos_slot) as usize;
-                rc.encode_bittree_reverse(&mut self.spec_pos[off..], dist - base, num_direct);
-            } else {
-                rc.encode_direct_bits((dist - base) >> NUM_ALIGN_BITS, num_direct - NUM_ALIGN_BITS);
-                let align_mask = (1u32 << NUM_ALIGN_BITS) - 1;
-                rc.encode_bittree_reverse(
-                    &mut self.align,
-                    (dist - base) & align_mask,
-                    NUM_ALIGN_BITS,
-                );
-            }
-        }
-    }
-}
-
-/// Map a distance to its 6-bit position slot (mirrors the decoder's inverse).
-#[cfg(feature = "enc")]
-fn get_pos_slot(dist: u32) -> u32 {
-    if dist < 4 {
-        return dist;
-    }
-    let n = 31 - dist.leading_zeros();
-    (n << 1) | ((dist >> (n - 1)) & 1)
 }

@@ -1,5 +1,5 @@
-//! Self-implemented LZMA1 codec in the `.lzma` "alone" container format,
-//! interoperable with the `xz` tool (`xz --format=lzma`).
+//! LZMA1 codec in the `.lzma` "alone" container format, interoperable with
+//! the `xz` tool (`xz --format=lzma`).
 //!
 //! The 13-byte header is: one properties byte `(pb*5 + lp)*9 + lc`, a 4-byte
 //! little-endian dictionary size, and an 8-byte little-endian uncompressed
@@ -7,36 +7,73 @@
 //! defaults lc=3, lp=0, pb=2 (properties byte `0x5D`) and store the real
 //! uncompressed length; the decoder honours whatever lc/lp/pb a valid header
 //! declares.
+//!
+//! Encoding is delegated to `lzma-rust2`, a port of tukaani's "xz for java",
+//! whose optimal parser matches `xz -9`. It runs at build time only.
+//! Decoding is our own: it is what ships in a user's binary, so it stays
+//! small, `no_std`, and free of dependencies.
 
 extern crate alloc;
 
-mod model;
-mod rangecoder;
-
 #[cfg(feature = "dec")]
 mod decoder;
-#[cfg(feature = "enc")]
-mod encoder;
+#[cfg(feature = "dec")]
+mod model;
+#[cfg(feature = "dec")]
+mod rangecoder;
 
 #[cfg(any(feature = "enc", feature = "dec"))]
 use alloc::vec::Vec;
 #[cfg(feature = "dec")]
 use embark_format::Error;
+#[cfg(feature = "enc")]
+use lzma_rust2::{LzmaOptions, LzmaWriter, Write as _};
 
 const HEADER_LEN: usize = 13;
 
+/// Compression preset handed to `lzma-rust2`. Presets 6 through 9 differ only
+/// in dictionary size, which we override below, so this is the cheapest way
+/// to ask for the best parse it offers: `EncodeMode::Normal` (optimal
+/// parsing) with the `Bt4` match finder, `nice_len` 64 and no depth limit.
+#[cfg(feature = "enc")]
+const PRESET: u32 = 9;
+
+/// Dictionary size we advertise in the `.lzma` header and cap match distances
+/// to: the next power of two at least as large as the input (min 4 KiB), so a
+/// decoder with this dictionary can resolve every distance we emit.
+///
+/// It has to stay a power of two. `xz` rejects a `.lzma` header whose
+/// dictionary size is neither a preset default nor a power of two with "File
+/// format not recognized", so sizing this to the raw input length would make
+/// the output unreadable by the reference tool.
+#[cfg(feature = "enc")]
+fn dict_size(n: usize) -> u32 {
+    let base = u32::try_from(n).unwrap_or(u32::MAX).clamp(1 << 12, 1 << 27);
+    base.next_power_of_two()
+}
+
 /// Compress `input` into a complete `.lzma` alone stream (header + body).
+///
+/// # Panics
+///
+/// Panics if the encoder reports an error. It writes into a `Vec`, which
+/// never fails, and every option it is given is fixed here, so no error is
+/// reachable; this runs inside the proc macro at build time, where a panic
+/// surfaces as a compile error rather than a runtime fault.
 #[cfg(feature = "enc")]
 pub(crate) fn compress(input: &[u8]) -> Vec<u8> {
-    let dict = encoder::dict_size(input.len());
-    let mut out = Vec::with_capacity(HEADER_LEN + input.len() / 2 + 16);
-    // Properties byte for lc=3, lp=0, pb=2: (2*5 + 0)*9 + 3 = 93 = 0x5D.
-    out.push(0x5D);
-    out.extend_from_slice(&dict.to_le_bytes());
-    out.extend_from_slice(&(input.len() as u64).to_le_bytes());
-    let body = encoder::encode(input, dict);
-    out.extend_from_slice(&body);
-    out
+    let mut options = LzmaOptions::with_preset(PRESET);
+    options.dict_size = dict_size(input.len());
+
+    let out = Vec::with_capacity(HEADER_LEN + input.len() / 2 + 64);
+    // `true` writes the 13-byte alone header; `false` suppresses the
+    // end-of-stream marker, which is redundant once the header carries the
+    // real length (and which our decoder rejects); `Some(len)` is the length
+    // that goes into that header.
+    let mut writer = LzmaWriter::new(out, &options, true, false, Some(input.len() as u64))
+        .expect("lzma encoder rejected our own options");
+    writer.write_all(input).expect("lzma encode into a Vec");
+    writer.finish().expect("lzma flush into a Vec")
 }
 
 /// Decompress a `.lzma` alone stream, verifying the output length is exactly

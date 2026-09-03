@@ -1,16 +1,13 @@
-//! LZMA range coder: the normalized 11-bit-probability arithmetic coder that
-//! sits underneath every LZMA symbol. The decoder and encoder are exact
-//! mirrors of each other so a stream produced by one is consumed by the other
-//! (and, more importantly, by the reference `xz` implementation).
+//! LZMA range decoder: the normalized 11-bit-probability arithmetic coder
+//! that sits underneath every LZMA symbol. It is the exact mirror of the
+//! range encoder in any LZMA1 producer, so it consumes streams from `xz` and
+//! from `lzma-rust2` alike.
 
 /// `kTopValue` -- the range is renormalized whenever it drops below this.
 const TOP: u32 = 1 << 24;
 /// Number of bits in a probability; `kBitModelTotal = 1 << 11 = 2048`.
-pub(crate) const MOVE_BITS: u32 = 5;
+const MOVE_BITS: u32 = 5;
 
-// --- decoder ---
-
-#[cfg(feature = "dec")]
 pub(crate) struct RangeDecoder<'a> {
     input: &'a [u8],
     pos: usize,
@@ -21,7 +18,6 @@ pub(crate) struct RangeDecoder<'a> {
     pub(crate) read_past: usize,
 }
 
-#[cfg(feature = "dec")]
 impl<'a> RangeDecoder<'a> {
     /// Initialize from the raw range-coded stream. The first byte must be 0
     /// (LZMA encoders always emit a leading zero from the range coder's cache);
@@ -113,104 +109,5 @@ impl<'a> RangeDecoder<'a> {
             sym |= bit << i;
         }
         sym
-    }
-}
-
-// --- encoder ---
-
-#[cfg(feature = "enc")]
-pub(crate) struct RangeEncoder {
-    low: u64,
-    range: u32,
-    cache: u8,
-    cache_size: u64,
-    pub(crate) out: alloc::vec::Vec<u8>,
-}
-
-#[cfg(feature = "enc")]
-impl RangeEncoder {
-    pub(crate) fn new() -> Self {
-        Self {
-            low: 0,
-            range: 0xFFFF_FFFF,
-            cache: 0,
-            cache_size: 1,
-            out: alloc::vec::Vec::new(),
-        }
-    }
-
-    #[inline]
-    fn shift_low(&mut self) {
-        if self.low < 0xFF00_0000 || (self.low >> 32) != 0 {
-            let mut temp = self.cache;
-            loop {
-                self.out.push((temp as u64 + (self.low >> 32)) as u8);
-                temp = 0xFF;
-                self.cache_size -= 1;
-                if self.cache_size == 0 {
-                    break;
-                }
-            }
-            self.cache = (self.low >> 24) as u8;
-        }
-        self.cache_size += 1;
-        self.low = (self.low << 8) & 0xFFFF_FFFF;
-    }
-
-    #[inline]
-    fn normalize(&mut self) {
-        while self.range < TOP {
-            self.range <<= 8;
-            self.shift_low();
-        }
-    }
-
-    #[inline]
-    pub(crate) fn encode_bit(&mut self, prob: &mut u16, bit: u32) {
-        let bound = (self.range >> 11) * (*prob as u32);
-        if bit == 0 {
-            self.range = bound;
-            *prob += ((2048 - *prob as u32) >> MOVE_BITS) as u16;
-        } else {
-            self.low += bound as u64;
-            self.range -= bound;
-            *prob -= *prob >> MOVE_BITS;
-        }
-        self.normalize();
-    }
-
-    pub(crate) fn encode_direct_bits(&mut self, v: u32, num: u32) {
-        for i in (0..num).rev() {
-            self.range >>= 1;
-            if ((v >> i) & 1) == 1 {
-                self.low += self.range as u64;
-            }
-            self.normalize();
-        }
-    }
-
-    pub(crate) fn encode_bittree(&mut self, probs: &mut [u16], symbol: u32, num_bits: u32) {
-        let mut m = 1usize;
-        for i in (0..num_bits).rev() {
-            let bit = (symbol >> i) & 1;
-            self.encode_bit(&mut probs[m], bit);
-            m = (m << 1) | bit as usize;
-        }
-    }
-
-    pub(crate) fn encode_bittree_reverse(&mut self, probs: &mut [u16], symbol: u32, num_bits: u32) {
-        let mut m = 1usize;
-        for i in 0..num_bits {
-            let bit = (symbol >> i) & 1;
-            self.encode_bit(&mut probs[m], bit);
-            m = (m << 1) | bit as usize;
-        }
-    }
-
-    /// Flush the five remaining bytes of the range coder's state.
-    pub(crate) fn flush(&mut self) {
-        for _ in 0..5 {
-            self.shift_low();
-        }
     }
 }
