@@ -37,8 +37,9 @@ pub fn expand(input: syn::DeriveInput) -> proc_macro2::TokenStream {
     };
 
     let mut manifest_items = Vec::new();
+    let mut tracked = Vec::new();
     for (rel, abs) in &files {
-        let data = std::fs::read(abs).expect("embark: read file during derive");
+        let data = build::read(abs);
         let entry = if let Some(key) = key_material {
             crypt::seal_with_key(&data, cfg.codec, cfg.cipher, key)
         } else if cfg.auto {
@@ -50,6 +51,7 @@ pub fn expand(input: syn::DeriveInput) -> proc_macro2::TokenStream {
         manifest_items.push(quote! {
             ::embark::Manifest { path: #rel, entry: #lit }
         });
+        tracked.push(build::track_file(abs));
     }
 
     // get()/iter() bodies. Dev-mode overrides get() in debug builds.
@@ -88,6 +90,7 @@ pub fn expand(input: syn::DeriveInput) -> proc_macro2::TokenStream {
 
     quote! {
         const _: () = {
+            #(#tracked)*
             static MANIFEST: &[::embark::Manifest] = &[ #(#manifest_items),* ];
             #recon_fn
             impl ::embark::Embed for #name {

@@ -1,5 +1,6 @@
 use embark_format::{write_entry, CodecId, CryptoId};
-use std::path::PathBuf;
+use quote::quote;
+use std::path::{Path, PathBuf};
 
 pub(crate) fn manifest_dir() -> PathBuf {
     PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set by cargo"))
@@ -9,9 +10,19 @@ pub(crate) fn resolve(rel: &str) -> PathBuf {
     manifest_dir().join(rel)
 }
 
-pub(crate) fn read(rel: &str) -> Vec<u8> {
-    let path = resolve(rel);
-    std::fs::read(&path).unwrap_or_else(|e| panic!("embark: cannot read {}: {e}", path.display()))
+pub(crate) fn read(path: &Path) -> Vec<u8> {
+    std::fs::read(path).unwrap_or_else(|e| panic!("embark: cannot read {}: {e}", path.display()))
+}
+
+// Reading an asset with `std::fs` is invisible to cargo, so an edited asset
+// would not trigger a rebuild. Emitting `include_bytes!` on the same path
+// registers it as a build input; `const _` keeps the value unnamed and
+// discardable, and repeats never collide.
+pub(crate) fn track_file(path: &Path) -> proc_macro2::TokenStream {
+    let abs = path.to_str().expect("embark: non-UTF-8 path");
+    quote!(
+        const _: &[::core::primitive::u8] = ::core::include_bytes!(#abs);
+    )
 }
 
 // Build a plaintext (optionally compressed) entry as raw bytes.

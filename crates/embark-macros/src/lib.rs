@@ -54,10 +54,11 @@ pub fn embed_bytes(input: TokenStream) -> TokenStream {
             // Raw mode: zero-cost include_bytes! with an absolute path.
             let abs = build::resolve(&args.path);
             let abs = abs.to_str().expect("embark: non-UTF-8 path");
-            quote!(include_bytes!(#abs)).into()
+            quote!(::core::include_bytes!(#abs)).into()
         }
         Some(codec) => {
-            let data = build::read(&args.path);
+            let path = build::resolve(&args.path);
+            let data = build::read(&path);
             let entry = match codec {
                 args::CodecArg::Auto => build::build_entry_best(&data),
                 args::CodecArg::Store => build::build_entry(CodecId::Store, &data),
@@ -68,7 +69,14 @@ pub fn embed_bytes(input: TokenStream) -> TokenStream {
                 args::CodecArg::Lzma => build::build_entry(CodecId::Lzma, &data),
             };
             let lit = build::bytes_literal(&entry);
-            quote!(::embark::EmbeddedBytes::from_entry(#lit)).into()
+            let track = build::track_file(&path);
+            quote! {
+                {
+                    #track
+                    ::embark::EmbeddedBytes::from_entry(#lit)
+                }
+            }
+            .into()
         }
     }
 }
@@ -124,7 +132,9 @@ pub fn embed_bytes(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn embed_crypt(input: TokenStream) -> TokenStream {
     let parsed = syn::parse_macro_input!(input as crypt_args::CryptArgs);
-    let data = build::read(&parsed.path);
+    let path = build::resolve(&parsed.path);
+    let data = build::read(&path);
+    let track = build::track_file(&path);
     let codec = parsed.codec_id();
     let crypto = parsed.crypto_id();
     let mode = if parsed.runtime_key {
@@ -143,13 +153,20 @@ pub fn embed_crypt(input: TokenStream) -> TokenStream {
             let (recon_fn, recon_name) = obfuscate::emit_key_recon(key);
             quote! {
                 {
+                    #track
                     #recon_fn
                     ::embark::EncryptedFile::with_embedded_key(#entry_lit, #recon_name)
                 }
             }
             .into()
         }
-        None => quote!(::embark::EncryptedFile::with_runtime_key(#entry_lit)).into(),
+        None => quote! {
+            {
+                #track
+                ::embark::EncryptedFile::with_runtime_key(#entry_lit)
+            }
+        }
+        .into(),
     }
 }
 
@@ -209,6 +226,15 @@ pub fn embed_crypt(input: TokenStream) -> TokenStream {
 ///   `include = "*"`, which matches any top-level file (a relative path
 ///   containing no `/`) but still not `sub/logo.png`. There is no
 ///   `**`-style multi-segment wildcard.
+///
+/// # Rebuilds
+///
+/// Every embedded file is registered as a build input, so editing or
+/// deleting one of them triggers a rebuild. **Adding a new file to the
+/// folder does not.** Only the files that existed when the derive last
+/// expanded are tracked, and a file that has never been seen cannot be
+/// among them. After adding a file, force the crate to rebuild -- touch
+/// any of its `.rs` files, or run `cargo clean -p <crate>`.
 #[proc_macro_derive(Embed, attributes(embark))]
 pub fn derive_embed(input: TokenStream) -> TokenStream {
     let parsed = syn::parse_macro_input!(input as syn::DeriveInput);
