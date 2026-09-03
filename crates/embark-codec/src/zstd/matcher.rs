@@ -5,9 +5,12 @@ use alloc::vec::Vec;
 
 /// Shortest match worth reporting, and the number of bytes the chain hashes.
 pub(super) const MIN_MATCH: usize = 4;
+/// Shortest match the parser will consider at all. Three-byte matches come
+/// from their own table, and at a repeat offset the offset is nearly free.
+pub(super) const MIN_SHORT_MATCH: usize = 3;
 /// Shortest match the parser will take at a repeat offset, where naming the
 /// offset costs almost nothing.
-pub(super) const MIN_REPEAT_MATCH: usize = 3;
+pub(super) const MIN_REPEAT_MATCH: usize = MIN_SHORT_MATCH;
 /// Longest match emitted, so that one sequence always fits in one block.
 pub(super) const MAX_MATCH: usize = 1 << 16;
 /// Empty slot in the hash tables.
@@ -52,7 +55,12 @@ fn ceil_log2(n: usize) -> u32 {
 pub(super) struct HashChain {
     head: Vec<u32>,
     chain: Vec<u32>,
+    /// Most recent position for each three-byte key, with no chain behind
+    /// it. Short matches are only worth taking when they are close, so the
+    /// latest one is the only one worth remembering.
+    short: Vec<u32>,
     hash_bits: u32,
+    short_bits: u32,
     chain_mask: usize,
     /// Positions below this have been inserted.
     filled: usize,
@@ -64,10 +72,13 @@ impl HashChain {
         // be reused once the position that holds it has dropped out of
         // reach, which is exactly when the window has moved past it.
         let chain_size = window.min(len).max(1).next_power_of_two();
+        let short_bits = hash_bits.min(17);
         Self {
             head: vec![NONE; 1usize << hash_bits],
             chain: vec![NONE; chain_size],
+            short: vec![NONE; 1usize << short_bits],
             hash_bits,
+            short_bits,
             chain_mask: chain_size - 1,
             filled: 0,
         }
@@ -78,6 +89,13 @@ impl HashChain {
         (word.wrapping_mul(2_654_435_761) >> (32 - self.hash_bits)) as usize
     }
 
+    /// Same key, three bytes wide. A whole four-byte word is always readable
+    /// where this is called, so the fourth byte is simply masked away.
+    fn short_hash(&self, input: &[u8], pos: usize) -> usize {
+        let word = u32::from_le_bytes([input[pos], input[pos + 1], input[pos + 2], input[pos + 3]]);
+        ((word & 0x00ff_ffff).wrapping_mul(2_654_435_761) >> (32 - self.short_bits)) as usize
+    }
+
     /// Insert every position below `upto` that is not in yet.
     pub(super) fn fill_to(&mut self, input: &[u8], upto: usize) {
         // A position is only hashable while a whole key still follows it.
@@ -86,6 +104,8 @@ impl HashChain {
             let slot = self.hash(input, self.filled);
             self.chain[self.filled & self.chain_mask] = self.head[slot];
             self.head[slot] = self.filled as u32;
+            let short = self.short_hash(input, self.filled);
+            self.short[short] = self.filled as u32;
             self.filled += 1;
         }
     }
@@ -107,7 +127,20 @@ impl HashChain {
         params: &Params,
         out: &mut Vec<(u32, u32)>,
     ) {
-        if limit < MIN_MATCH || pos + MIN_MATCH > input.len() {
+        if limit < MIN_SHORT_MATCH || pos + MIN_MATCH > input.len() {
+            return;
+        }
+        // The three-byte table first, capped at three so it only ever claims
+        // the length the chain cannot reach. On data whose literals barely
+        // compress, a match this short still pays for itself.
+        let short = self.short[self.short_hash(input, pos)];
+        if short != NONE {
+            let at = short as usize;
+            if at >= floor && at < pos && common_prefix(input, at, pos, limit) >= MIN_SHORT_MATCH {
+                out.push((MIN_SHORT_MATCH as u32, (pos - at) as u32));
+            }
+        }
+        if limit < MIN_MATCH {
             return;
         }
         let mut best_len = 0usize;

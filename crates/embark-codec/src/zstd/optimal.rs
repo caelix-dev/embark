@@ -28,7 +28,7 @@ use alloc::vec::Vec;
 use super::distribution::log2_fixed;
 use super::fse;
 use super::matcher::{
-    self, HashChain, MAX_MATCH, MIN_MATCH, MIN_REPEAT_MATCH, Match, Params, common_prefix,
+    self, HashChain, MAX_MATCH, MIN_REPEAT_MATCH, MIN_SHORT_MATCH, Match, Params, common_prefix,
 };
 use super::sequences;
 
@@ -335,10 +335,10 @@ pub(super) fn parse(
             }
         }
 
-        // Chain candidates arrive nearest first and so also longest-last: a
-        // later one is further away, so it can only pay for lengths the
-        // nearer ones could not reach.
-        let mut covered = MIN_MATCH - 1;
+        // Candidates arrive nearest first and so also longest-last: a later
+        // one is further away, so it can only pay for lengths the nearer
+        // ones could not reach.
+        let mut covered = MIN_SHORT_MATCH - 1;
         for &(len, offset) in candidates.at(index) {
             let (len, offset) = (len as usize, offset as usize);
             if len > covered {
