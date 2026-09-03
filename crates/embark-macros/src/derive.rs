@@ -1,3 +1,4 @@
+use crate::args::{CodecArg, parse_codec};
 use crate::{build, crypt, glob};
 use embark_format::{CodecId, CryptoId};
 use quote::quote;
@@ -9,9 +10,8 @@ struct Config {
     // The literal, not its value: every folder-related diagnostic below is
     // spanned at it, so the caret lands on the path the user wrote.
     folder: LitStr,
-    codec: CodecId,
+    codec: CodecArg,
     cipher: CryptoId,
-    auto: bool,
     encrypt: bool,
     dev: bool,
     include: Vec<String>,
@@ -45,9 +45,13 @@ pub(crate) fn expand(input: &syn::DeriveInput) -> syn::Result<proc_macro2::Token
         let shown = shown_child(&cfg, rel);
         let data = build::read(abs, &shown, folder_span)?;
         let entry = if let Some(key) = key_material {
-            crypt::seal_with_key(&data, cfg.codec, cfg.cipher, key, &shown, folder_span)?
-        } else if cfg.auto {
-            build::build_entry_best(&data, &shown, folder_span)?
+            // As in `embed_crypt!`: the encrypted path does not run the
+            // selection pass, and an `auto` policy simplifies to Deflate.
+            let codec = match cfg.codec {
+                CodecArg::Auto(_) => CodecArg::Fixed(CodecId::Deflate),
+                fixed => fixed,
+            };
+            crypt::seal_with_key(&data, codec, cfg.cipher, key, &shown, folder_span)?
         } else {
             build::build_entry(cfg.codec, &data, &shown, folder_span)?
         };
@@ -242,9 +246,8 @@ fn included(cfg: &Config, rel: &str) -> bool {
 
 fn parse_config(input: &syn::DeriveInput) -> syn::Result<Config> {
     let mut folder: Option<LitStr> = None;
-    let mut codec = CodecId::Deflate;
+    let mut codec = CodecArg::Fixed(CodecId::Deflate);
     let mut cipher = CryptoId::ChaCha20Poly1305;
-    let mut auto = false;
     let mut encrypt = false;
     let mut dev = false;
     let mut include = Vec::new();
@@ -259,16 +262,9 @@ fn parse_config(input: &syn::DeriveInput) -> syn::Result<Config> {
                 folder = Some(meta.value()?.parse()?);
             } else if meta.path.is_ident("codec") {
                 let s: syn::LitStr = meta.value()?.parse()?;
-                match s.value().as_str() {
-                    "auto" => auto = true,
-                    "store" => codec = CodecId::Store,
-                    "deflate" => codec = CodecId::Deflate,
-                    "lz4" => codec = CodecId::Lz4,
-                    "snappy" => codec = CodecId::Snappy,
-                    "zstd" => codec = CodecId::Zstd,
-                    "lzma" => codec = CodecId::Lzma,
-                    other => return Err(meta.error(format!("unknown codec `{other}`"))),
-                }
+                let name = s.value();
+                codec = parse_codec(&name)
+                    .ok_or_else(|| meta.error(format!("unknown codec `{name}`")))?;
             } else if meta.path.is_ident("cipher") {
                 let s: syn::LitStr = meta.value()?.parse()?;
                 match s.value().as_str() {
@@ -311,7 +307,6 @@ fn parse_config(input: &syn::DeriveInput) -> syn::Result<Config> {
         folder,
         codec,
         cipher,
-        auto,
         encrypt,
         dev,
         include,

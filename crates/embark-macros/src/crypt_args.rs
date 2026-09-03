@@ -1,3 +1,4 @@
+use crate::args::{CodecArg, parse_codec};
 use embark_format::{CodecId, CryptoId};
 use proc_macro2::Span;
 use syn::parse::{Parse, ParseStream};
@@ -18,27 +19,21 @@ pub(crate) struct CryptArgs {
     // spanned at the path the user wrote. Same for `runtime_key`: it carries
     // the span of `runtime`, which a bad `EMBARK_KEY` is reported at.
     pub path: LitStr,
-    pub codec: Option<crate::args::CodecArg>,
+    pub codec: Option<CodecArg>,
     pub cipher: Option<CipherArg>,
     pub runtime_key: Option<Span>,
 }
 
 impl CryptArgs {
     /// The codec to compress with before sealing. Defaults to `Deflate` when
-    /// unspecified. `codec = auto` is accepted but, for `embed_crypt!`,
-    /// simplifies to `Deflate` too rather than running the full
-    /// codec-selection pass `embed_bytes!` does for its `auto` mode -- the
-    /// entry is encrypted either way, so the size delta between codecs
-    /// matters less here.
-    pub(crate) fn codec_id(&self) -> CodecId {
+    /// unspecified. An `auto` policy is accepted but, for `embed_crypt!`,
+    /// simplifies to `Deflate` too rather than running the codec-selection
+    /// pass `embed_bytes!` does -- the entry is encrypted either way, so the
+    /// size delta between codecs matters less here.
+    pub(crate) fn codec(&self) -> CodecArg {
         match self.codec {
-            None | Some(crate::args::CodecArg::Auto) => CodecId::Deflate,
-            Some(crate::args::CodecArg::Store) => CodecId::Store,
-            Some(crate::args::CodecArg::Deflate) => CodecId::Deflate,
-            Some(crate::args::CodecArg::Lz4) => CodecId::Lz4,
-            Some(crate::args::CodecArg::Snappy) => CodecId::Snappy,
-            Some(crate::args::CodecArg::Zstd) => CodecId::Zstd,
-            Some(crate::args::CodecArg::Lzma) => CodecId::Lzma,
+            None | Some(CodecArg::Auto(_)) => CodecArg::Fixed(CodecId::Deflate),
+            Some(fixed) => fixed,
         }
     }
 
@@ -65,21 +60,10 @@ impl Parse for CryptArgs {
             let _: Token![=] = input.parse()?;
             if key == "codec" {
                 let val: syn::Ident = input.parse()?;
-                codec = Some(match val.to_string().as_str() {
-                    "store" => crate::args::CodecArg::Store,
-                    "deflate" => crate::args::CodecArg::Deflate,
-                    "lz4" => crate::args::CodecArg::Lz4,
-                    "snappy" => crate::args::CodecArg::Snappy,
-                    "zstd" => crate::args::CodecArg::Zstd,
-                    "lzma" => crate::args::CodecArg::Lzma,
-                    "auto" => crate::args::CodecArg::Auto,
-                    other => {
-                        return Err(syn::Error::new(
-                            val.span(),
-                            format!("unknown codec `{other}`"),
-                        ));
-                    }
-                });
+                let name = val.to_string();
+                codec = Some(parse_codec(&name).ok_or_else(|| {
+                    syn::Error::new(val.span(), format!("unknown codec `{name}`"))
+                })?);
             } else if key == "cipher" {
                 let val: syn::Ident = input.parse()?;
                 cipher = Some(match val.to_string().as_str() {

@@ -1,3 +1,4 @@
+use crate::args::CodecArg;
 use embark_format::{CodecId, CryptoId, write_entry};
 use proc_macro2::Span;
 use quote::quote;
@@ -127,21 +128,32 @@ fn verify_decode(
     Ok(())
 }
 
-// Compress, pick between the result and the original, and prove the winner
-// decodes. Shared by the plaintext and the encrypted paths, which make the
-// same two decisions in the same order.
+// Compress, settle on a codec, and prove the winner decodes. Every encoded
+// payload in the crate goes through here: the plaintext and the encrypted
+// paths make the same decisions in the same order, and an `auto` tier is a
+// choice of candidates, not a different pipeline.
 pub(crate) fn compress_verified(
-    codec: CodecId,
+    codec: CodecArg,
     data: &[u8],
     shown: &str,
     span: Span,
 ) -> syn::Result<(CodecId, Vec<u8>)> {
-    let payload = embark_codec::compress(codec, data);
-    // Never grow: fall back to Store if the codec did not help.
-    let (codec, payload) = if payload.len() < data.len() {
-        (codec, payload)
-    } else {
-        (CodecId::Store, data.to_vec())
+    let (codec, payload) = match codec {
+        // Already never larger than the input, and already Store when
+        // nothing in the tier helped. Only the winner is verified: every
+        // other candidate's output is thrown away unread, so checking it
+        // would cost a decode per candidate to protect bytes that never
+        // reach the binary.
+        CodecArg::Auto(tier) => embark_codec::compress_best_in(tier, data),
+        CodecArg::Fixed(id) => {
+            let payload = embark_codec::compress(id, data);
+            // Never grow: fall back to Store if the codec did not help.
+            if payload.len() < data.len() {
+                (id, payload)
+            } else {
+                (CodecId::Store, data.to_vec())
+            }
+        }
     };
     verify_decode(codec, data, &payload, shown, span)?;
     Ok((codec, payload))
@@ -149,30 +161,12 @@ pub(crate) fn compress_verified(
 
 // Build a plaintext (optionally compressed) entry as raw bytes.
 pub(crate) fn build_entry(
-    codec: CodecId,
+    codec: CodecArg,
     data: &[u8],
     shown: &str,
     span: Span,
 ) -> syn::Result<Vec<u8>> {
     let (codec, payload) = compress_verified(codec, data, shown, span)?;
-    let mut entry = Vec::new();
-    write_entry(
-        &mut entry,
-        codec,
-        CryptoId::None,
-        data.len() as u64,
-        None,
-        &payload,
-    );
-    Ok(entry)
-}
-
-pub(crate) fn build_entry_best(data: &[u8], shown: &str, span: Span) -> syn::Result<Vec<u8>> {
-    let (codec, payload) = embark_codec::compress_best(data);
-    // Only the winner is verified. Every other candidate's output is thrown
-    // away unread, so checking it would cost a decode per compiled-in codec
-    // to protect bytes that never reach the binary.
-    verify_decode(codec, data, &payload, shown, span)?;
     let mut entry = Vec::new();
     write_entry(
         &mut entry,
@@ -240,9 +234,13 @@ mod tests {
 
     #[test]
     fn an_untouched_payload_verifies() {
-        let (codec, payload) =
-            compress_verified(CodecId::Store, DATA, "assets/logo.png", Span::call_site())
-                .expect("store must round-trip");
+        let (codec, payload) = compress_verified(
+            CodecArg::Fixed(CodecId::Store),
+            DATA,
+            "assets/logo.png",
+            Span::call_site(),
+        )
+        .expect("store must round-trip");
         assert_eq!(codec, CodecId::Store);
         assert_eq!(payload, DATA);
     }

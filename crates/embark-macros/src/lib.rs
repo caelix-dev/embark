@@ -11,7 +11,6 @@ mod derive;
 mod glob;
 mod obfuscate;
 
-use embark_format::CodecId;
 use proc_macro::TokenStream;
 use quote::quote;
 
@@ -27,7 +26,8 @@ use quote::quote;
 /// // Compressed with a specific codec.
 /// static GZ: embark::EmbeddedBytes = embark::embed_bytes!("assets/data.json", codec = deflate);
 ///
-/// // Compressed with whichever enabled codec shrinks it the most.
+/// // Compressed with the best size/decode-speed trade among the enabled
+/// // codecs; `auto_fast` and `auto_small` move that balance either way.
 /// static BEST: embark::EmbeddedBytes = embark::embed_bytes!("assets/data.json", codec = auto);
 /// ```
 ///
@@ -37,19 +37,37 @@ use quote::quote;
 /// [`EmbeddedBytes`](https://docs.rs/embark/*/embark/struct.EmbeddedBytes.html).</div>
 ///
 /// `path` is resolved relative to the crate's `CARGO_MANIFEST_DIR`. The
-/// optional `codec = <ident>` argument selects the compressor: `store`,
-/// `deflate`, `lz4`, `snappy`, `zstd`, `lzma`, or `auto` (tries every codec
-/// enabled on the `embark` crate and keeps the smallest output, falling
-/// back to `store` if none of them help).
+/// optional `codec = <ident>` argument names either one codec -- `store`,
+/// `deflate`, `lz4`, `snappy`, `zstd` or `lzma` -- or one of the three
+/// `auto` policies, which compress with a tier of candidates at build time
+/// and keep the smallest output among that tier:
 ///
-/// **`codec = auto` and enabled features:** the codec ident you name here
-/// (explicit, or the winner `auto` picks) must correspond to a codec
-/// feature enabled on the `embark` crate you decode with. If it isn't
-/// enabled, encoding does not fail -- the entry silently degrades to
-/// `store` (uncompressed) instead, since encoding never fails and correct
-/// but uncompressed output is still correct. Enable the matching feature
-/// (`deflate`, `lz4`, `snappy`, `zstd`, `lzma`) if you expect compression
-/// to actually happen.
+/// | policy | candidates |
+/// |---|---|
+/// | `auto_fast` | `store`, `lz4`, `snappy` |
+/// | `auto` | those, plus `deflate` and `zstd` |
+/// | `auto_small` | those, plus `lzma` |
+///
+/// Compression runs once, here; decompression runs in the shipped binary on
+/// every access. The tiers are cut along that second axis. On a 468 KiB
+/// executable, `auto_fast` picks LZ4 at 312,340 bytes and 1,744 MB/s,
+/// `auto` picks DEFLATE at 228,157 bytes and 305 MB/s, and `auto_small`
+/// picks LZMA at 191,493 bytes and 45 MB/s. All three fall back to `store`
+/// when nothing shrinks the file.
+///
+/// A policy encodes only with its own candidates, so `auto_fast` never pays
+/// LZMA's build-time encode cost to then throw the result away.
+///
+/// **Codecs and enabled features:** the codec ident you name here must
+/// correspond to a codec feature enabled on the `embark` crate you decode
+/// with. If it isn't enabled, encoding does not fail -- the entry silently
+/// degrades to `store` (uncompressed) instead, since encoding never fails
+/// and correct but uncompressed output is still correct. Enable the
+/// matching feature (`deflate`, `lz4`, `snappy`, `zstd`, `lzma`) if you
+/// expect compression to actually happen. The `auto` policies can only pick
+/// an enabled codec by construction, and a policy whose whole tier is
+/// disabled widens to the next one rather than degrading to `store`: with
+/// only `lzma` on, `auto_fast` still compresses.
 #[proc_macro]
 pub fn embed_bytes(input: TokenStream) -> TokenStream {
     let args = syn::parse_macro_input!(input as args::Args);
@@ -71,17 +89,7 @@ fn expand_bytes(args: args::Args) -> syn::Result<proc_macro2::TokenStream> {
         }
         Some(codec) => {
             let data = build::read(&path, &shown, span)?;
-            let entry = match codec {
-                args::CodecArg::Auto => build::build_entry_best(&data, &shown, span)?,
-                args::CodecArg::Store => build::build_entry(CodecId::Store, &data, &shown, span)?,
-                args::CodecArg::Deflate => {
-                    build::build_entry(CodecId::Deflate, &data, &shown, span)?
-                }
-                args::CodecArg::Lz4 => build::build_entry(CodecId::Lz4, &data, &shown, span)?,
-                args::CodecArg::Snappy => build::build_entry(CodecId::Snappy, &data, &shown, span)?,
-                args::CodecArg::Zstd => build::build_entry(CodecId::Zstd, &data, &shown, span)?,
-                args::CodecArg::Lzma => build::build_entry(CodecId::Lzma, &data, &shown, span)?,
-            };
+            let entry = build::build_entry(codec, &data, &shown, span)?;
             let lit = build::bytes_literal(&entry);
             let track = build::track_file(&path, span)?;
             Ok(quote! {
@@ -128,12 +136,14 @@ fn expand_bytes(args: args::Args) -> syn::Result<proc_macro2::TokenStream> {
 /// the path, in any order:
 ///
 /// - `codec = <ident>` — compress before sealing (`store`, `deflate`,
-///   `lz4`, `snappy`, `zstd`, `lzma`, or `auto`). Defaults to `deflate` when omitted;
-///   `auto` also simplifies to `deflate` here rather than running the full
-///   codec-selection pass `embed_bytes!` does, since the entry is encrypted
-///   regardless. The same feature-enablement caveat as `embed_bytes!`
-///   applies: if the named codec's feature isn't enabled on `embark`, the
-///   entry silently degrades to `store` instead of failing to build.
+///   `lz4`, `snappy`, `zstd`, `lzma`, or one of `auto_fast` / `auto` /
+///   `auto_small`). Defaults to `deflate` when omitted. The `auto` policies
+///   run the same selection pass as in [`embed_bytes!`]; compression
+///   happens before sealing, so the pass reads the plaintext and the cipher
+///   sees no difference. The same feature-enablement caveat as
+///   [`embed_bytes!`] applies: if the named codec's feature isn't enabled
+///   on `embark`, the entry silently degrades to `store` instead of failing
+///   to build.
 /// - `cipher = <ident>` — the AEAD cipher to seal with: `chacha`
 ///   (ChaCha20-Poly1305, the default) or `aes` (AES-256-GCM). Both share
 ///   the same key/nonce/tag shape and threat model — see the module docs'
@@ -163,7 +173,7 @@ fn expand_crypt(parsed: crypt_args::CryptArgs) -> syn::Result<proc_macro2::Token
     let path = build::resolve(&parsed.path);
     let data = build::read(&path, &shown, span)?;
     let track = build::track_file(&path, span)?;
-    let codec = parsed.codec_id();
+    let codec = parsed.codec();
     let crypto = parsed.crypto_id();
     let mode = match parsed.runtime_key {
         // `KeyMode::Runtime` carries its own span, so an EMBARK_KEY failure
@@ -223,8 +233,10 @@ fn expand_crypt(parsed: crypt_args::CryptArgs) -> syn::Result<proc_macro2::Token
 ///   separators, even on Windows).
 /// - `codec = "..."` — compression for every embedded file: `"store"`,
 ///   `"deflate"` (the default), `"lz4"`, `"snappy"`, `"zstd"`, `"lzma"`, or
-///   `"auto"` (picks the smallest per-file output among the codecs enabled
-///   on `embark`).
+///   one of the three selection policies `"auto_fast"`, `"auto"` and
+///   `"auto_small"`, described on [`embed_bytes!`]. A policy is applied per
+///   file, so one folder can end up with a different codec per entry. It
+///   applies under `encrypt` too, on each file's plaintext.
 ///   As with `embed_bytes!`, naming a codec whose feature isn't enabled on
 ///   `embark` does not fail the build -- affected entries silently degrade
 ///   to `store` (correct, just uncompressed).

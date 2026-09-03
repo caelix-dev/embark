@@ -1,6 +1,7 @@
+use crate::args::CodecArg;
 use crate::build;
 use embark_crypt::{gen_key_nonce, seal};
-use embark_format::{CodecId, CryptoId, write_entry};
+use embark_format::{CryptoId, write_entry};
 use proc_macro2::Span;
 
 pub(crate) enum KeyMode {
@@ -39,7 +40,7 @@ impl std::fmt::Debug for Sealed {
 /// `EMBARK_KEY` is missing or malformed.
 pub(crate) fn seal_file(
     data: &[u8],
-    codec: CodecId,
+    codec: CodecArg,
     crypto: CryptoId,
     mode: KeyMode,
     shown: &str,
@@ -106,7 +107,7 @@ fn env_key() -> Result<[u8; 32], String> {
 // reconstruction function the derive emits). Returns just the entry bytes.
 pub(crate) fn seal_with_key(
     data: &[u8],
-    codec: CodecId,
+    codec: CodecArg,
     crypto: CryptoId,
     key: [u8; 32],
     shown: &str,
