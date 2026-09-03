@@ -72,13 +72,15 @@ fn expand_bytes(args: args::Args) -> syn::Result<proc_macro2::TokenStream> {
         Some(codec) => {
             let data = build::read(&path, &shown, span)?;
             let entry = match codec {
-                args::CodecArg::Auto => build::build_entry_best(&data),
-                args::CodecArg::Store => build::build_entry(CodecId::Store, &data),
-                args::CodecArg::Deflate => build::build_entry(CodecId::Deflate, &data),
-                args::CodecArg::Lz4 => build::build_entry(CodecId::Lz4, &data),
-                args::CodecArg::Snappy => build::build_entry(CodecId::Snappy, &data),
-                args::CodecArg::Zstd => build::build_entry(CodecId::Zstd, &data),
-                args::CodecArg::Lzma => build::build_entry(CodecId::Lzma, &data),
+                args::CodecArg::Auto => build::build_entry_best(&data, &shown, span)?,
+                args::CodecArg::Store => build::build_entry(CodecId::Store, &data, &shown, span)?,
+                args::CodecArg::Deflate => {
+                    build::build_entry(CodecId::Deflate, &data, &shown, span)?
+                }
+                args::CodecArg::Lz4 => build::build_entry(CodecId::Lz4, &data, &shown, span)?,
+                args::CodecArg::Snappy => build::build_entry(CodecId::Snappy, &data, &shown, span)?,
+                args::CodecArg::Zstd => build::build_entry(CodecId::Zstd, &data, &shown, span)?,
+                args::CodecArg::Lzma => build::build_entry(CodecId::Lzma, &data, &shown, span)?,
             };
             let lit = build::bytes_literal(&entry);
             let track = build::track_file(&path, span)?;
@@ -163,14 +165,14 @@ fn expand_crypt(parsed: crypt_args::CryptArgs) -> syn::Result<proc_macro2::Token
     let track = build::track_file(&path, span)?;
     let codec = parsed.codec_id();
     let crypto = parsed.crypto_id();
-    let (mode, key_span) = match parsed.runtime_key {
-        Some(key_span) => (crypt::KeyMode::Runtime, key_span),
-        None => (crypt::KeyMode::BuildTime, span),
+    let mode = match parsed.runtime_key {
+        // `KeyMode::Runtime` carries its own span, so an EMBARK_KEY failure
+        // lands on the `key = runtime` argument that asked for it rather
+        // than on the path literal every other diagnostic points at.
+        Some(key_span) => crypt::KeyMode::Runtime(key_span),
+        None => crypt::KeyMode::BuildTime,
     };
-    // The only failure here is a missing or malformed EMBARK_KEY, which
-    // `key = runtime` is what asked for -- so point the caret there.
-    let sealed = crypt::seal_file(&data, codec, crypto, mode)
-        .map_err(|msg| syn::Error::new(key_span, msg))?;
+    let sealed = crypt::seal_file(&data, codec, crypto, mode, &shown, span)?;
     let entry_lit = build::bytes_literal(&sealed.entry);
     Ok(match sealed.key {
         Some(key) => {

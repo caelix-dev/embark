@@ -42,13 +42,14 @@ pub(crate) fn expand(input: &syn::DeriveInput) -> syn::Result<proc_macro2::Token
     let mut manifest_items = Vec::new();
     let mut tracked = Vec::new();
     for (rel, abs) in &files {
-        let data = build::read(abs, &shown_child(&cfg, rel), folder_span)?;
+        let shown = shown_child(&cfg, rel);
+        let data = build::read(abs, &shown, folder_span)?;
         let entry = if let Some(key) = key_material {
-            crypt::seal_with_key(&data, cfg.codec, cfg.cipher, key)
+            crypt::seal_with_key(&data, cfg.codec, cfg.cipher, key, &shown, folder_span)?
         } else if cfg.auto {
-            build::build_entry_best(&data)
+            build::build_entry_best(&data, &shown, folder_span)?
         } else {
-            build::build_entry(cfg.codec, &data)
+            build::build_entry(cfg.codec, &data, &shown, folder_span)?
         };
         let lit = build::bytes_literal(&entry);
         manifest_items.push(quote! {

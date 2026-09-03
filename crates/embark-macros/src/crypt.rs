@@ -1,9 +1,14 @@
+use crate::build;
 use embark_crypt::{gen_key_nonce, seal};
 use embark_format::{CodecId, CryptoId, write_entry};
+use proc_macro2::Span;
 
 pub(crate) enum KeyMode {
     BuildTime,
-    Runtime,
+    /// Carries the span of the `key = runtime` argument that asked for this
+    /// mode, so a missing or malformed `EMBARK_KEY` points the caret there
+    /// rather than at the path literal.
+    Runtime(Span),
 }
 
 pub(crate) struct Sealed {
@@ -25,30 +30,34 @@ impl std::fmt::Debug for Sealed {
     }
 }
 
-/// Seals `data`. Fails only in [`KeyMode::Runtime`], when `EMBARK_KEY` is
-/// missing or malformed; the message is returned for the caller to span at
-/// the `key = runtime` argument that asked for it.
+/// Seals `data`, which `shown` names and `span` points at for diagnostics.
+///
+/// # Errors
+///
+/// Fails if the compressed payload does not decode back to `data` (see
+/// [`build::compress_verified`]), or, in [`KeyMode::Runtime`] only, if
+/// `EMBARK_KEY` is missing or malformed.
 pub(crate) fn seal_file(
     data: &[u8],
     codec: CodecId,
     crypto: CryptoId,
     mode: KeyMode,
-) -> Result<Sealed, String> {
-    // Compress first (never grow), then encrypt the compressed payload.
-    let compressed = embark_codec::compress(codec, data);
-    let (codec, compressed) = if compressed.len() < data.len() {
-        (codec, compressed)
-    } else {
-        (CodecId::Store, data.to_vec())
-    };
+    shown: &str,
+    span: Span,
+) -> syn::Result<Sealed> {
+    // Compress first (never grow, and check it decodes), then encrypt the
+    // compressed payload. Only the compression stage is verified: a
+    // decrypt-then-decompress round trip would test the AEAD crates instead,
+    // and there is no key to decrypt with in `KeyMode::Runtime` anyway.
+    let (codec, compressed) = build::compress_verified(codec, data, shown, span)?;
 
     let (key, nonce, embedded_key) = match mode {
         KeyMode::BuildTime => {
             let (key, nonce) = gen_key_nonce();
             (key, nonce, Some(key))
         }
-        KeyMode::Runtime => {
-            let key = env_key()?;
+        KeyMode::Runtime(key_span) => {
+            let key = env_key().map_err(|msg| syn::Error::new(key_span, msg))?;
             let (_, nonce) = gen_key_nonce();
             (key, nonce, None)
         }
@@ -100,13 +109,10 @@ pub(crate) fn seal_with_key(
     codec: CodecId,
     crypto: CryptoId,
     key: [u8; 32],
-) -> Vec<u8> {
-    let compressed = embark_codec::compress(codec, data);
-    let (codec, compressed) = if compressed.len() < data.len() {
-        (codec, compressed)
-    } else {
-        (CodecId::Store, data.to_vec())
-    };
+    shown: &str,
+    span: Span,
+) -> syn::Result<Vec<u8>> {
+    let (codec, compressed) = build::compress_verified(codec, data, shown, span)?;
     let (_, nonce) = gen_key_nonce(); // fresh per-file nonce
     let (ct, tag) = seal(crypto, &key, &nonce, &compressed);
     let mut entry = Vec::new();
@@ -118,7 +124,7 @@ pub(crate) fn seal_with_key(
         Some((nonce, tag)),
         &ct,
     );
-    entry
+    Ok(entry)
 }
 
 #[cfg(test)]

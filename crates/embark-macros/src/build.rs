@@ -59,8 +59,83 @@ pub(crate) fn track_file(path: &Path, span: Span) -> syn::Result<proc_macro2::To
     ))
 }
 
-// Build a plaintext (optionally compressed) entry as raw bytes.
-pub(crate) fn build_entry(codec: CodecId, data: &[u8]) -> Vec<u8> {
+// How the macro's own `codec = ...` argument spells this codec, so a
+// diagnostic names the thing the user would edit.
+fn codec_name(codec: CodecId) -> String {
+    match codec {
+        CodecId::Store => "store".to_string(),
+        CodecId::Deflate => "deflate".to_string(),
+        CodecId::Lz4 => "lz4".to_string(),
+        CodecId::Snappy => "snappy".to_string(),
+        CodecId::Zstd => "zstd".to_string(),
+        CodecId::Lzma => "lzma".to_string(),
+        // `CodecId` is #[non_exhaustive]: a codec added to the format but not
+        // yet to this table still has to name itself in a diagnostic.
+        other => format!("codec id {}", other.as_u8()),
+    }
+}
+
+/// Checks that the decoder can read back what the encoder just produced,
+/// and fails the build if it cannot.
+///
+/// The encoders run here, on the build machine; the decoder that reads their
+/// output is a separate implementation compiled into the consumer's binary.
+/// Nothing else checks the two agree, so an encoder emitting something our
+/// decoder refuses -- a frame parameter it does not support, say -- would
+/// otherwise surface as a runtime error in a binary that already shipped.
+/// Decoding costs a fraction of what the encoding above cost.
+///
+/// A mismatch is never routed into the `Store` fallback. That fallback is a
+/// size decision, and reusing it here would make an encoder bug look exactly
+/// like an incompressible file, discarding the only signal this check exists
+/// to produce.
+fn verify_decode(
+    codec: CodecId,
+    data: &[u8],
+    payload: &[u8],
+    shown: &str,
+    span: Span,
+) -> syn::Result<()> {
+    let fail = |detail: &str| {
+        let name = codec_name(codec);
+        let msg = format!(
+            "embark: `{shown}`: the {name} encoder produced a payload this build's \
+             decoder cannot read back ({detail}). This is a bug in embark, not in \
+             the asset; please report it."
+        );
+        syn::Error::new(span, msg)
+    };
+
+    let decoded = embark_codec::decompress(codec, payload, data.len())
+        .map_err(|e| fail(&format!("decoding failed: {e}")))?;
+    // Most decoders reject a length disagreement themselves, above. Saying it
+    // in the message anyway keeps "decoded the wrong amount" distinguishable
+    // from "decoded the wrong bytes", which point at different encoder bugs.
+    if decoded.len() != data.len() {
+        return Err(fail(&format!(
+            "decoded to {} bytes, expected {}",
+            decoded.len(),
+            data.len()
+        )));
+    }
+    if let Some(at) = decoded.iter().zip(data).position(|(a, b)| a != b) {
+        return Err(fail(&format!(
+            "decoded output first differs at byte {at}: expected {:#04x}, got {:#04x}",
+            data[at], decoded[at]
+        )));
+    }
+    Ok(())
+}
+
+// Compress, pick between the result and the original, and prove the winner
+// decodes. Shared by the plaintext and the encrypted paths, which make the
+// same two decisions in the same order.
+pub(crate) fn compress_verified(
+    codec: CodecId,
+    data: &[u8],
+    shown: &str,
+    span: Span,
+) -> syn::Result<(CodecId, Vec<u8>)> {
     let payload = embark_codec::compress(codec, data);
     // Never grow: fall back to Store if the codec did not help.
     let (codec, payload) = if payload.len() < data.len() {
@@ -68,20 +143,18 @@ pub(crate) fn build_entry(codec: CodecId, data: &[u8]) -> Vec<u8> {
     } else {
         (CodecId::Store, data.to_vec())
     };
-    let mut entry = Vec::new();
-    write_entry(
-        &mut entry,
-        codec,
-        CryptoId::None,
-        data.len() as u64,
-        None,
-        &payload,
-    );
-    entry
+    verify_decode(codec, data, &payload, shown, span)?;
+    Ok((codec, payload))
 }
 
-pub(crate) fn build_entry_best(data: &[u8]) -> Vec<u8> {
-    let (codec, payload) = embark_codec::compress_best(data);
+// Build a plaintext (optionally compressed) entry as raw bytes.
+pub(crate) fn build_entry(
+    codec: CodecId,
+    data: &[u8],
+    shown: &str,
+    span: Span,
+) -> syn::Result<Vec<u8>> {
+    let (codec, payload) = compress_verified(codec, data, shown, span)?;
     let mut entry = Vec::new();
     write_entry(
         &mut entry,
@@ -91,7 +164,25 @@ pub(crate) fn build_entry_best(data: &[u8]) -> Vec<u8> {
         None,
         &payload,
     );
-    entry
+    Ok(entry)
+}
+
+pub(crate) fn build_entry_best(data: &[u8], shown: &str, span: Span) -> syn::Result<Vec<u8>> {
+    let (codec, payload) = embark_codec::compress_best(data);
+    // Only the winner is verified. Every other candidate's output is thrown
+    // away unread, so checking it would cost a decode per compiled-in codec
+    // to protect bytes that never reach the binary.
+    verify_decode(codec, data, &payload, shown, span)?;
+    let mut entry = Vec::new();
+    write_entry(
+        &mut entry,
+        codec,
+        CryptoId::None,
+        data.len() as u64,
+        None,
+        &payload,
+    );
+    Ok(entry)
 }
 
 // Emit a byte slice as a single byte-string literal. One token instead of one
