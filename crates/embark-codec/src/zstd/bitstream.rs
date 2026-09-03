@@ -43,6 +43,18 @@ impl BitWriter {
         }
     }
 
+    /// Flush any partial byte and return the stream with no end marker.
+    ///
+    /// The FSE table description is read forwards and reports its own
+    /// length, so it needs no marker and simply leaves the last byte's spare
+    /// bits unused (RFC 8478, section 4.1.1).
+    pub(super) fn finish_forward(mut self) -> Vec<u8> {
+        if self.bits > 0 {
+            self.out.push(self.container as u8);
+        }
+        self.out
+    }
+
     /// Append the end marker and return the finished stream.
     ///
     /// The marker is a single set bit followed by zero padding to the next

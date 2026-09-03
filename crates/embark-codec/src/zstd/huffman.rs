@@ -4,16 +4,16 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use super::bitstream::BitWriter;
+use super::weights;
 
 /// Longest code the format allows.
 const MAX_BITS: u32 = 11;
 
-/// Most weights the direct header can carry.
+/// Most weights a direct header can carry.
 ///
 /// The header states `Number_of_Symbols = headerByte - 127`, so it holds at
 /// most 128 weights, covering literals 0 to 128 once the last weight is
-/// deduced. A wider alphabet needs the FSE-compressed header, which this
-/// encoder does not write yet; those blocks keep stored literals.
+/// deduced. A wider alphabet has to take the FSE-compressed header.
 const MAX_DIRECT_WEIGHTS: usize = 128;
 
 /// Below this many literals the tree description cannot pay for itself.
@@ -169,17 +169,28 @@ fn assign_codes(lengths: &[u8; 256]) -> [u16; 256] {
     codes
 }
 
-/// Write the tree description in its direct representation: one weight per
-/// nibble, high nibble first.
+/// Write the tree description, in whichever of the two forms is smaller.
 fn write_tree(out: &mut Vec<u8>, series: &[u8]) -> Option<()> {
-    if series.len() > MAX_DIRECT_WEIGHTS {
-        return None;
+    let direct = (series.len() <= MAX_DIRECT_WEIGHTS).then(|| 1 + series.len().div_ceil(2));
+    let coded = weights::compress(series);
+    match (direct, coded) {
+        (Some(size), Some(body)) if size <= body.len() + 1 => write_direct(out, series),
+        (_, Some(body)) => {
+            out.push(body.len() as u8);
+            out.extend_from_slice(&body);
+        }
+        (Some(_), None) => write_direct(out, series),
+        (None, None) => return None,
     }
+    Some(())
+}
+
+/// The direct representation: one weight per nibble, high nibble first.
+fn write_direct(out: &mut Vec<u8>, series: &[u8]) {
     out.push((127 + series.len()) as u8);
     for pair in series.chunks(2) {
         out.push(pair[0] << 4 | pair.get(1).copied().unwrap_or(0));
     }
-    Some(())
 }
 
 fn weight(len: u8, max_bits: u32) -> u8 {

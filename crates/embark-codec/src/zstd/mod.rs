@@ -29,6 +29,8 @@ mod huffman;
 mod matcher;
 #[cfg(feature = "enc")]
 mod sequences;
+#[cfg(feature = "enc")]
+mod weights;
 
 #[cfg(any(feature = "enc", feature = "dec"))]
 use alloc::vec::Vec;
@@ -241,6 +243,28 @@ mod tests {
                 assert_eq!(back, data);
             }
         }
+    }
+
+    #[test]
+    fn skewed_bytes_are_huffman_coded() {
+        // Unpredictable bytes, so no match can help, but a lopsided
+        // distribution reaching past 128. Only the FSE-compressed weight
+        // header can describe that alphabet, so without it these blocks
+        // would be stored verbatim.
+        let mut data = Vec::with_capacity(200_000);
+        let mut state = 0x2545_f491u32;
+        while data.len() < 200_000 {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            data.push(((state >> 8) as u8) >> (state % 8));
+        }
+        let packed = roundtrip(&data);
+        assert!(
+            packed.len() < data.len() * 9 / 10,
+            "packed to {}",
+            packed.len()
+        );
     }
 
     #[test]
