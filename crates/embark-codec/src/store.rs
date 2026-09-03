@@ -5,12 +5,12 @@ use alloc::vec::Vec;
 use embark_format::Error;
 
 #[cfg(feature = "enc")]
-pub fn compress(input: &[u8]) -> Vec<u8> {
+pub(crate) fn compress(input: &[u8]) -> Vec<u8> {
     input.to_vec()
 }
 
 #[cfg(feature = "dec")]
-pub fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
+pub(crate) fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
     if input.len() != orig_len {
         return Err(Error::Corrupt);
     }

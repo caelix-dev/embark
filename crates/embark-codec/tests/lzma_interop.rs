@@ -1,9 +1,9 @@
-#![cfg(all(feature = "enc", feature = "dec", feature = "lzma"))]
 //! Interoperability of our self-implemented LZMA1 `.lzma` codec with the
 //! reference `xz` tool. Gated behind `EMBARK_LZMA_INTEROP=1` so environments
 //! without `xz` skip it. Both directions are checked:
 //!   * ours -> xz  proves our encoder emits valid LZMA1.
 //!   * xz  -> ours proves our decoder is spec-correct.
+#![cfg(all(feature = "enc", feature = "dec", feature = "lzma"))]
 use std::io::Write;
 use std::process::{Command, Stdio};
 

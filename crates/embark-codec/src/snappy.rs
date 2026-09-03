@@ -35,7 +35,7 @@ fn read_uvarint(input: &[u8]) -> Result<(u32, usize), Error> {
 const MAX_OFFSET: usize = 1 << 16; // we emit 2-byte-offset copies only (simplest valid subset)
 
 #[cfg(feature = "enc")]
-pub fn compress(input: &[u8]) -> Vec<u8> {
+pub(crate) fn compress(input: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(input.len() / 2 + 8);
     put_uvarint(&mut out, input.len() as u32);
 
@@ -119,7 +119,7 @@ fn emit_copy(out: &mut Vec<u8>, offset: usize, mut len: usize) {
 // --- decoder: full Snappy block format (handles all copy tag widths) ---
 
 #[cfg(feature = "dec")]
-pub fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
+pub(crate) fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
     let (declared, mut pos) = read_uvarint(input)?;
     if declared as usize != orig_len {
         return Err(Error::Corrupt);

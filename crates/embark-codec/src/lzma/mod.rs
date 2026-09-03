@@ -27,7 +27,7 @@ const HEADER_LEN: usize = 13;
 
 /// Compress `input` into a complete `.lzma` alone stream (header + body).
 #[cfg(feature = "enc")]
-pub fn compress(input: &[u8]) -> Vec<u8> {
+pub(crate) fn compress(input: &[u8]) -> Vec<u8> {
     let dict = encoder::dict_size(input.len());
     let mut out = Vec::with_capacity(HEADER_LEN + input.len() / 2 + 16);
     // Properties byte for lc=3, lp=0, pb=2: (2*5 + 0)*9 + 3 = 93 = 0x5D.
@@ -43,7 +43,7 @@ pub fn compress(input: &[u8]) -> Vec<u8> {
 /// `orig_len`. Malformed input yields `Error::Corrupt` / `Error::Truncated`,
 /// never a panic.
 #[cfg(feature = "dec")]
-pub fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
+pub(crate) fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
     if input.len() < HEADER_LEN {
         return Err(Error::Truncated);
     }

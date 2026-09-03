@@ -51,7 +51,7 @@ impl LenCoder {
     }
 
     #[cfg(feature = "dec")]
-    fn decode(&mut self, rc: &mut RangeDecoder, pos_state: usize) -> usize {
+    fn decode(&mut self, rc: &mut RangeDecoder<'_>, pos_state: usize) -> usize {
         if rc.decode_bit(&mut self.choice) == 0 {
             rc.decode_bittree(&mut self.low[pos_state], 3) as usize
         } else if rc.decode_bit(&mut self.choice2) == 0 {
@@ -151,34 +151,39 @@ impl LzmaModel {
 #[cfg(feature = "dec")]
 impl LzmaModel {
     #[inline]
-    pub(crate) fn decode_is_match(&mut self, rc: &mut RangeDecoder, st: usize, ps: usize) -> u32 {
+    pub(crate) fn decode_is_match(
+        &mut self,
+        rc: &mut RangeDecoder<'_>,
+        st: usize,
+        ps: usize,
+    ) -> u32 {
         rc.decode_bit(&mut self.is_match[st][ps])
     }
 
     #[inline]
-    pub(crate) fn decode_is_rep(&mut self, rc: &mut RangeDecoder, st: usize) -> u32 {
+    pub(crate) fn decode_is_rep(&mut self, rc: &mut RangeDecoder<'_>, st: usize) -> u32 {
         rc.decode_bit(&mut self.is_rep[st])
     }
 
     #[inline]
-    pub(crate) fn decode_is_rep_g0(&mut self, rc: &mut RangeDecoder, st: usize) -> u32 {
+    pub(crate) fn decode_is_rep_g0(&mut self, rc: &mut RangeDecoder<'_>, st: usize) -> u32 {
         rc.decode_bit(&mut self.is_rep_g0[st])
     }
 
     #[inline]
-    pub(crate) fn decode_is_rep_g1(&mut self, rc: &mut RangeDecoder, st: usize) -> u32 {
+    pub(crate) fn decode_is_rep_g1(&mut self, rc: &mut RangeDecoder<'_>, st: usize) -> u32 {
         rc.decode_bit(&mut self.is_rep_g1[st])
     }
 
     #[inline]
-    pub(crate) fn decode_is_rep_g2(&mut self, rc: &mut RangeDecoder, st: usize) -> u32 {
+    pub(crate) fn decode_is_rep_g2(&mut self, rc: &mut RangeDecoder<'_>, st: usize) -> u32 {
         rc.decode_bit(&mut self.is_rep_g2[st])
     }
 
     #[inline]
     pub(crate) fn decode_is_rep0_long(
         &mut self,
-        rc: &mut RangeDecoder,
+        rc: &mut RangeDecoder<'_>,
         st: usize,
         ps: usize,
     ) -> u32 {
@@ -186,12 +191,12 @@ impl LzmaModel {
     }
 
     #[inline]
-    pub(crate) fn decode_rep_len(&mut self, rc: &mut RangeDecoder, ps: usize) -> usize {
+    pub(crate) fn decode_rep_len(&mut self, rc: &mut RangeDecoder<'_>, ps: usize) -> usize {
         self.rep_len_coder.decode(rc, ps)
     }
 
     #[inline]
-    pub(crate) fn decode_new_len(&mut self, rc: &mut RangeDecoder, ps: usize) -> usize {
+    pub(crate) fn decode_new_len(&mut self, rc: &mut RangeDecoder<'_>, ps: usize) -> usize {
         self.len_coder.decode(rc, ps)
     }
 
@@ -200,7 +205,7 @@ impl LzmaModel {
     /// "matched" literal coder used right after a match (`state >= 7`).
     pub(crate) fn decode_literal(
         &mut self,
-        rc: &mut RangeDecoder,
+        rc: &mut RangeDecoder<'_>,
         total_pos: usize,
         prev_byte: u8,
         state: usize,
@@ -235,7 +240,7 @@ impl LzmaModel {
     /// Decode the raw distance for a new match, given the raw length symbol.
     /// Returns the distance value `dist` (the true back-offset is `dist + 1`);
     /// `0xFFFF_FFFF` is the end-of-stream marker.
-    pub(crate) fn decode_distance(&mut self, rc: &mut RangeDecoder, len_sym: usize) -> u32 {
+    pub(crate) fn decode_distance(&mut self, rc: &mut RangeDecoder<'_>, len_sym: usize) -> u32 {
         let len_state = len_sym.min(NUM_LEN_TO_POS - 1);
         let pos_slot = rc.decode_bittree(&mut self.pos_slot[len_state], 6);
         if pos_slot < 4 {

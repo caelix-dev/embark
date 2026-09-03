@@ -63,6 +63,14 @@ pub fn compress(id: CodecId, input: &[u8]) -> Vec<u8> {
 }
 
 /// Decompress with `id`, which must name a codec compiled into this build.
+///
+/// # Errors
+///
+/// Returns [`Error::UnknownCodec`] if `id` names a codec whose cargo
+/// feature is off, which is a normal outcome when reading an entry produced
+/// by a build with more codecs enabled than this one. Otherwise returns
+/// whatever that codec reports for a payload it cannot decode, or one that
+/// does not expand to exactly `orig_len` bytes.
 #[cfg(feature = "dec")]
 pub fn decompress(id: CodecId, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
     let Some(decompress) = lookup(DECODERS, id) else {

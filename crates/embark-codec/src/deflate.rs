@@ -4,14 +4,14 @@ use alloc::vec::Vec;
 use embark_format::Error;
 
 #[cfg(feature = "enc")]
-pub fn compress(input: &[u8]) -> Vec<u8> {
+pub(crate) fn compress(input: &[u8]) -> Vec<u8> {
     // Level 9: maximum ratio. Raw DEFLATE (no zlib header) to keep the entry
     // header the single source of framing.
     miniz_oxide::deflate::compress_to_vec(input, 9)
 }
 
 #[cfg(feature = "dec")]
-pub fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
+pub(crate) fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
     if orig_len == 0 {
         return Ok(Vec::new());
     }

@@ -40,6 +40,7 @@ pub trait Codec: sealed::Sealed {
 }
 
 /// The identity codec: stores bytes unchanged.
+#[derive(Debug)]
 pub struct Store;
 
 impl sealed::Sealed for Store {}
@@ -51,11 +52,18 @@ impl Codec for Store {
 impl Store {
     /// Compress `input`.
     #[cfg(feature = "enc")]
+    #[must_use]
     pub fn compress(&self, input: &[u8]) -> Vec<u8> {
         crate::store::compress(input)
     }
 
     /// Decompress `input`, which must expand to exactly `orig_len` bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Corrupt`] if `input` is not exactly `orig_len`
+    /// bytes long. Nothing else can go wrong: there is no encoding to
+    /// misparse.
     #[cfg(feature = "dec")]
     pub fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
         crate::store::decompress(input, orig_len)
@@ -64,6 +72,7 @@ impl Store {
 
 /// The DEFLATE codec (via `miniz_oxide`).
 #[cfg(feature = "deflate")]
+#[derive(Debug)]
 pub struct Deflate;
 
 #[cfg(feature = "deflate")]
@@ -78,11 +87,18 @@ impl Codec for Deflate {
 impl Deflate {
     /// Compress `input`.
     #[cfg(feature = "enc")]
+    #[must_use]
     pub fn compress(&self, input: &[u8]) -> Vec<u8> {
         crate::deflate::compress(input)
     }
 
     /// Decompress `input`, which must expand to exactly `orig_len` bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Corrupt`] if `input` is not a valid raw DEFLATE
+    /// stream, if it expands to a length other than `orig_len`, or if
+    /// `orig_len` is more than this target can allocate.
     #[cfg(feature = "dec")]
     pub fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
         crate::deflate::decompress(input, orig_len)
@@ -91,6 +107,7 @@ impl Deflate {
 
 /// The LZ4 codec (via `lz4_flex`).
 #[cfg(feature = "lz4")]
+#[derive(Debug)]
 pub struct Lz4;
 
 #[cfg(feature = "lz4")]
@@ -105,11 +122,18 @@ impl Codec for Lz4 {
 impl Lz4 {
     /// Compress `input`.
     #[cfg(feature = "enc")]
+    #[must_use]
     pub fn compress(&self, input: &[u8]) -> Vec<u8> {
         crate::lz4::compress(input)
     }
 
     /// Decompress `input`, which must expand to exactly `orig_len` bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Corrupt`] if `input` is not a valid LZ4 block, if it
+    /// expands to a length other than `orig_len`, or if `orig_len` is more
+    /// than this target can allocate.
     #[cfg(feature = "dec")]
     pub fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
         crate::lz4::decompress(input, orig_len)
@@ -118,6 +142,7 @@ impl Lz4 {
 
 /// The Snappy codec (self-implemented).
 #[cfg(feature = "snappy")]
+#[derive(Debug)]
 pub struct Snappy;
 
 #[cfg(feature = "snappy")]
@@ -132,11 +157,19 @@ impl Codec for Snappy {
 impl Snappy {
     /// Compress `input`.
     #[cfg(feature = "enc")]
+    #[must_use]
     pub fn compress(&self, input: &[u8]) -> Vec<u8> {
         crate::snappy::compress(input)
     }
 
     /// Decompress `input`, which must expand to exactly `orig_len` bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Truncated`] if the block ends mid-tag, and
+    /// [`Error::Corrupt`] if a tag is malformed, if the length preamble or
+    /// the decoded output disagrees with `orig_len`, or if `orig_len` is
+    /// more than this target can allocate.
     #[cfg(feature = "dec")]
     pub fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
         crate::snappy::decompress(input, orig_len)
@@ -145,6 +178,7 @@ impl Snappy {
 
 /// The Zstd codec (via `ruzstd`).
 #[cfg(feature = "zstd")]
+#[derive(Debug)]
 pub struct Zstd;
 
 #[cfg(feature = "zstd")]
@@ -159,11 +193,18 @@ impl Codec for Zstd {
 impl Zstd {
     /// Compress `input`.
     #[cfg(feature = "enc")]
+    #[must_use]
     pub fn compress(&self, input: &[u8]) -> Vec<u8> {
         crate::zstd::compress(input)
     }
 
     /// Decompress `input`, which must expand to exactly `orig_len` bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Corrupt`] if `input` is not a valid zstd frame, if it
+    /// yields fewer than `orig_len` bytes, or if `orig_len` is more than this
+    /// target can allocate.
     #[cfg(feature = "dec")]
     pub fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
         crate::zstd::decompress(input, orig_len)
@@ -172,6 +213,7 @@ impl Zstd {
 
 /// The LZMA1 codec (self-implemented `.lzma` alone format).
 #[cfg(feature = "lzma")]
+#[derive(Debug)]
 pub struct Lzma;
 
 #[cfg(feature = "lzma")]
@@ -186,11 +228,19 @@ impl Codec for Lzma {
 impl Lzma {
     /// Compress `input`.
     #[cfg(feature = "enc")]
+    #[must_use]
     pub fn compress(&self, input: &[u8]) -> Vec<u8> {
         crate::lzma::compress(input)
     }
 
     /// Decompress `input`, which must expand to exactly `orig_len` bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Truncated`] if the stream ends mid-symbol, and
+    /// [`Error::Corrupt`] if the `.lzma` header is malformed, if the size it
+    /// records or the decoded output disagrees with `orig_len`, or if
+    /// `orig_len` is more than this target can allocate.
     #[cfg(feature = "dec")]
     pub fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
         crate::lzma::decompress(input, orig_len)

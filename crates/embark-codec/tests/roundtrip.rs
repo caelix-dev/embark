@@ -1,3 +1,6 @@
+//! Every codec compiled into the build, exercised through the public
+//! `CodecId` dispatch rather than its own module, plus the guarantee that
+//! `compress_best` never returns more bytes than storing the input verbatim.
 #![cfg(all(feature = "enc", feature = "dec"))]
 use embark_codec::{compress, compress_best, decompress};
 use embark_format::CodecId;

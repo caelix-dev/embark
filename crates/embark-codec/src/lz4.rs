@@ -4,12 +4,12 @@ use alloc::vec::Vec;
 use embark_format::Error;
 
 #[cfg(feature = "enc")]
-pub fn compress(input: &[u8]) -> Vec<u8> {
+pub(crate) fn compress(input: &[u8]) -> Vec<u8> {
     lz4_flex::block::compress(input)
 }
 
 #[cfg(feature = "dec")]
-pub fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
+pub(crate) fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
     // `lz4_flex::block::decompress` preallocates `orig_len` internally via
     // `vec![0u8; orig_len]`, and `orig_len` comes straight from the
     // (attacker-controllable) entry header. We size the output buffer

@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 use embark_format::Error;
 
 #[cfg(feature = "enc")]
-pub fn compress(input: &[u8]) -> Vec<u8> {
+pub(crate) fn compress(input: &[u8]) -> Vec<u8> {
     // "Fastest" is the only implemented level in ruzstd 0.9 (Default/Better/Best
     // panic with `unimplemented!()`); it still produces a valid, portable zstd
     // frame that any conformant decoder (including this one) can read.
@@ -12,7 +12,7 @@ pub fn compress(input: &[u8]) -> Vec<u8> {
 }
 
 #[cfg(feature = "dec")]
-pub fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
+pub(crate) fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
     use ruzstd::io::Read as _;
 
     if orig_len == 0 {

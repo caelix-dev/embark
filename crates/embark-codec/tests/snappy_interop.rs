@@ -1,3 +1,7 @@
+//! Interoperability of our self-implemented Snappy encoder with the
+//! reference implementation: the output is handed to `python-snappy` and
+//! must decode back to the original bytes. Opt-in via `EMBARK_SNAPPY_INTEROP=1`
+//! so the suite stays runnable without Python installed.
 #![cfg(all(feature = "enc", feature = "snappy"))]
 use std::process::Command;
 
