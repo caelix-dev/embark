@@ -124,7 +124,14 @@ pub fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
     if declared as usize != orig_len {
         return Err(Error::Corrupt);
     }
-    let mut out: Vec<u8> = Vec::with_capacity(orig_len);
+    // `orig_len` is bounded to `u32::MAX` (~4 GiB) by the preamble varint
+    // above, but that is still an allocation an attacker can demand from a
+    // 5-byte input, and it is far more than the `no_std` targets this crate
+    // supports can ever satisfy. Reserve fallibly so the claim turns into
+    // `Error::Corrupt` rather than an allocator abort.
+    let mut out: Vec<u8> = Vec::new();
+    out.try_reserve_exact(orig_len)
+        .map_err(|_| Error::Corrupt)?;
 
     while pos < input.len() {
         let tag = input[pos];
@@ -243,6 +250,23 @@ mod tests {
     #[test]
     fn truncated_is_error() {
         assert!(decompress(&[0x04, 0xff], 4).is_err());
+    }
+
+    #[test]
+    fn hostile_orig_len_does_not_over_allocate() {
+        // The preamble varint must equal `orig_len` exactly, which caps a
+        // claim at `u32::MAX` (~4 GiB) from a 5-byte input -- on a desktop
+        // with ample virtual memory, `Vec::with_capacity(u32::MAX)` tends to
+        // succeed and this already returned `Err` from the trailing
+        // length check, so this assertion alone does not distinguish the
+        // fix from the old code on every platform. It still guards the
+        // `no_std` targets this crate supports (this crate is verified
+        // against thumbv7em-none-eabihf, which cannot satisfy a 4 GiB
+        // request), where the old unconditional `with_capacity` aborts.
+        let hostile_orig_len = u32::MAX as usize;
+        let mut input = Vec::new();
+        put_uvarint(&mut input, hostile_orig_len as u32);
+        assert!(decompress(&input, hostile_orig_len).is_err());
     }
 
     #[test]
