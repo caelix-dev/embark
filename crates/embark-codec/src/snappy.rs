@@ -152,8 +152,11 @@ pub fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
                     pos += extra;
                     len = v;
                 }
-                len += 1;
-                if pos + len > input.len() {
+                // A four-byte stored length of `FF FF FF FF` is `usize::MAX`
+                // on a 32-bit target, where `+ 1` would wrap to zero and turn
+                // a truncated literal into a silently accepted empty one.
+                let len = len.checked_add(1).ok_or(Error::Corrupt)?;
+                if len > input.len() - pos {
                     return Err(Error::Truncated);
                 }
                 out.extend_from_slice(&input[pos..pos + len]);
@@ -267,6 +270,18 @@ mod tests {
         let mut input = Vec::new();
         put_uvarint(&mut input, hostile_orig_len as u32);
         assert!(decompress(&input, hostile_orig_len).is_err());
+    }
+
+    #[test]
+    fn literal_length_at_usize_max_does_not_wrap() {
+        // A four-byte literal length of `FF FF FF FF` is `usize::MAX` on a
+        // 32-bit target once the format's stored `length - 1` is undone, so
+        // the `+ 1` must be checked. On a 64-bit target the same input is
+        // simply a truncated literal. Either way it must be an error, never
+        // an accepted zero-length literal.
+        // Tag 0xFC: literal, length field 63 -> four following length bytes.
+        let body: &[u8] = &[0x04, 0xFC, 0xFF, 0xFF, 0xFF, 0xFF];
+        assert!(decompress(body, 4).is_err());
     }
 
     #[test]
