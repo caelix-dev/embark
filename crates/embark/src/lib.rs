@@ -20,9 +20,8 @@ pub use embed::{entries, lookup, Embed, EmbeddedFile, Entries, Manifest};
 #[cfg(feature = "encryption")]
 pub use encrypted::EncryptedFile;
 
-// NOTE: the `derive` feature's macro re-export (`pub use embark_macros::{embed_bytes,
-// embed_crypt, Embed};`) is intentionally deferred to `feat/macros`, which implements
-// those proc-macros. Adding it here before they exist breaks the build.
+#[cfg(feature = "derive")]
+pub use embark_macros::embed_bytes;
 
 #[cfg(feature = "metadata")]
 #[doc(hidden)]
