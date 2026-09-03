@@ -25,10 +25,21 @@ mod sealed {
 /// call into user code.
 pub trait Aead: sealed::Sealed {
     /// Encrypt `plain` in place, returning the ciphertext and detached tag.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `plain` is longer than the cipher can encrypt under one key
+    /// and nonce: 256 GiB for ChaCha20-Poly1305, 64 GiB for AES-256-GCM. An
+    /// entry that large cannot be embedded in a binary in any case.
     #[cfg(feature = "enc")]
     fn seal(&self, key: &[u8; 32], nonce: &[u8; 12], plain: &[u8]) -> (Vec<u8>, [u8; 16]);
 
     /// Decrypt `ct`, verifying it against the detached `tag`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Auth`] if the tag does not authenticate `ct` under
+    /// this key and nonce.
     #[cfg(feature = "dec")]
     fn open(
         &self,

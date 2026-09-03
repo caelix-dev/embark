@@ -13,12 +13,17 @@ use crate::ChaCha20Poly1305;
 
 /// Seal `plain` under the AEAD cipher named by `crypto`.
 ///
-/// `crypto` is expected to name a real cipher (`ChaCha20Poly1305` or, with
-/// the `aes` feature, `Aes256Gcm`) -- the only caller today is
-/// `embark-macros`, which always resolves a `cipher = ...` argument to one
-/// of those before calling here. `CryptoId::None`, or `Aes256Gcm` with the
-/// `aes` feature disabled, is a caller bug, not a runtime condition to
-/// recover from.
+/// # Panics
+///
+/// Panics if `crypto` does not name a cipher this build can seal with, that
+/// is `CryptoId::None` or, without the `aes` feature, `CryptoId::Aes256Gcm`.
+/// The only caller today is `embark-macros`, which always resolves a
+/// `cipher = ...` argument to a supported cipher before calling here, so
+/// either case is a caller bug rather than a runtime condition to recover
+/// from.
+///
+/// Also panics if `plain` exceeds the chosen cipher's maximum message
+/// length; see [`Aead::seal`](crate::Aead::seal).
 #[cfg(feature = "enc")]
 pub fn seal(
     crypto: CryptoId,
@@ -44,6 +49,12 @@ pub fn seal(
 /// Unlike [`seal`], this is reachable with an arbitrary on-binary
 /// `CryptoId` (untrusted entry data), so an unknown or feature-disabled
 /// cipher is a normal `Err`, never a panic.
+///
+/// # Errors
+///
+/// Returns `Error::UnknownCrypto` if `crypto` names no cipher this build can
+/// open with, and `Error::Auth` if the tag does not authenticate `ct` under
+/// this key and nonce.
 #[cfg(feature = "dec")]
 pub fn open(
     crypto: CryptoId,

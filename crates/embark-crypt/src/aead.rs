@@ -14,7 +14,7 @@ pub fn seal(key: &[u8; 32], nonce: &[u8; 12], plain: &[u8]) -> (Vec<u8>, [u8; 16
     let mut buf = plain.to_vec();
     let tag = cipher
         .encrypt_in_place_detached(Nonce::from_slice(nonce), b"", &mut buf)
-        .expect("chacha20poly1305 encryption never fails for valid lengths");
+        .expect("embark-crypt: plaintext exceeds the 256 GiB ChaCha20-Poly1305 message limit");
     (buf, tag.into())
 }
 
