@@ -29,7 +29,7 @@ use quote::quote;
 /// static GZ: embark::EmbeddedBytes = embark::embed_bytes!("assets/data.json", codec = deflate);
 ///
 /// // Compressed with whichever enabled codec shrinks it the most.
-/// static BEST: embark::EmbeddedBytes = embark::embed_bytes!("assets/data.json", codec = "auto");
+/// static BEST: embark::EmbeddedBytes = embark::embed_bytes!("assets/data.json", codec = auto);
 /// ```
 ///
 /// <div class="warning">Not run as a doctest: expanding this macro needs
@@ -43,7 +43,7 @@ use quote::quote;
 /// enabled on the `embark` crate and keeps the smallest output, falling
 /// back to `store` if none of them help).
 ///
-/// **`codec = "auto"` and enabled features:** the codec ident you name here
+/// **`codec = auto` and enabled features:** the codec ident you name here
 /// (explicit, or the winner `auto` picks) must correspond to a codec
 /// feature enabled on the `embark` crate you decode with. If it isn't
 /// enabled, encoding does not fail -- the entry silently degrades to
