@@ -7,8 +7,9 @@
 //! and dispatch at runtime, which is what a decoder reading an untrusted
 //! entry needs. The unit structs — [`Store`], [`Deflate`], [`Lz4`],
 //! [`Snappy`], [`Zstd`], [`Lzma`] — are the direct-call form for a caller
-//! that already knows its codec, and [`compress_best`] tries every codec
-//! compiled in and keeps the smallest output.
+//! that already knows its codec, and [`compress_best_in`] runs the `auto`
+//! family's codec selection: compress with one [`AutoTier`]'s worth of
+//! candidates and keep the smallest output.
 //!
 //! Every codec is pure Rust with no C dependency, so the whole crate builds
 //! for `no_std` targets with only `alloc`.
@@ -77,7 +78,7 @@ pub use codec::Zstd;
 pub use codec::{Codec, Store};
 
 #[cfg(feature = "enc")]
-pub use best::compress_best;
+pub use best::{AutoTier, compress_best, compress_best_in};
 #[cfg(feature = "enc")]
 pub use dispatch::compress;
 #[cfg(feature = "dec")]
