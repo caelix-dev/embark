@@ -9,3 +9,8 @@ mod aead;
 pub use aead::seal;
 #[cfg(feature = "dec")]
 pub use aead::open;
+
+mod keygen;
+pub use keygen::xor32;
+#[cfg(feature = "enc")]
+pub use keygen::gen_key_nonce;
