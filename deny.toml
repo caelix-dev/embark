@@ -20,13 +20,22 @@ ignore = [
 # embark itself is MIT-only (see LICENSE-MIT / the workspace `license` key).
 # This allow-list is for the *dependency* tree, not embark's own code.
 #
-# Apache-2.0 is deliberately NOT allowed. Most deps are dual MIT/Apache-2.0
-# and resolve through the MIT side, so the whole tree passes without it --
-# verified with `cargo deny check licenses`. Leaving it out means a future
-# dependency that is Apache-only fails the check instead of being accepted
-# silently, which is what we want for an MIT-only project.
+# Apache-2.0 is allowed for ONE dependency, and only reluctantly.
+# `lzma-rust2` is Apache-2.0 with no MIT option. It is the LZMA encoder, so
+# it is reachable only through the `enc` feature, which only the proc macro
+# turns on: it runs on the build host and is never linked into a user's
+# binary. embark's own crates stay MIT (see LICENSE-MIT), and the artifact
+# embark distributes carries no Apache-2.0 code.
+#
+# This entry was removed once, deliberately, so that an Apache-only
+# dependency would fail this check rather than slip in unnoticed. It did
+# exactly that when lzma-rust2 was added. Putting it back is a decision, not
+# an oversight -- if the policy is that no dependency may be Apache-2.0 at
+# any tier, drop this line and revert the lzma encoder to the hand-written
+# one.
 allow = [
     "MIT",
+    "Apache-2.0",
     # adler2 (miniz_oxide -> embark-codec): "0BSD OR MIT OR Apache-2.0"
     "0BSD",
     # subtle (AEAD stack -> embark-crypt): "BSD-3-Clause", no OR
