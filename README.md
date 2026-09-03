@@ -47,13 +47,42 @@ static DOC: embark::EmbeddedBytes = embark::embed_bytes!("assets/lipsum.txt", co
 
 ### `embed_crypt!` — embed an encrypted file
 
+`embed_crypt!` compresses a file, then seals it with an AEAD cipher, in one
+build-time step:
+
 ```rust
+// Default: compressed (Deflate) then encrypted (ChaCha20-Poly1305),
+// with a build-time key obfuscated into the binary.
 static SECRET: embark::EncryptedFile = embark::embed_crypt!("assets/secret.txt");
 
+// Choose the cipher (needs the `aes` feature) and the compression codec;
+// arguments can appear in any order.
+static CONFIG: embark::EncryptedFile =
+    embark::embed_crypt!("assets/config.bin", cipher = aes, codec = zstd);
+
+// Runtime key — no key compiled in; you supply it at run time. Note the
+// EncryptedFile<RuntimeKey> type annotation.
+static LICENSE: embark::EncryptedFile<embark::RuntimeKey> =
+    embark::embed_crypt!("assets/license.key", key = runtime);
+
 fn main() {
-    println!("{}", SECRET.decrypt_str().unwrap());
+    println!("{}", SECRET.decrypt_str().unwrap());     // build-time key: infallible
+    let cfg = CONFIG.decrypt();                          // Vec<u8>
+    let lic = LICENSE.decrypt_with(&runtime_key()).unwrap(); // runtime key: Result
 }
 ```
+
+- `cipher = <ident>` — `chacha` (ChaCha20-Poly1305, the default) or `aes`
+  (AES-256-GCM; needs the `aes` feature).
+- `codec = <ident>` — `store`, `deflate` (the default), `lz4`, `snappy`,
+  `zstd`, `lzma`, or `auto`; compression always happens before encryption.
+- `key = runtime` — switches the binding's type to
+  `EncryptedFile<RuntimeKey>`: no key material is compiled in, and (enforced
+  at compile time, not just by convention) that type has no `decrypt()`
+  method at all — only `decrypt_with(&key)`, which returns a `Result` since
+  the wrong key fails to authenticate. Omitted by default, which embeds a
+  build-time key and gives you the infallible `decrypt()` / `decrypt_str()`
+  instead.
 
 Runnable versions of all four patterns live in
 [`crates/embark/examples/`](crates/embark/examples/) — try
@@ -77,7 +106,8 @@ For real confidentiality — a secret the binary itself should not be able to
 reveal without external input — use `key = runtime`:
 
 ```rust
-static SECRET: embark::EncryptedFile = embark::embed_crypt!("assets/secret.txt", key = runtime);
+static SECRET: embark::EncryptedFile<embark::RuntimeKey> =
+    embark::embed_crypt!("assets/secret.txt", key = runtime);
 
 fn main() {
     let key: [u8; 32] = load_key_from_somewhere_else();
