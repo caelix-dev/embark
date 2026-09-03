@@ -1,8 +1,33 @@
-#![forbid(unsafe_code)]
-#![cfg_attr(not(feature = "std"), no_std)]
+//! The encryption layer of the `embark` toolkit: AEAD sealing and opening
+//! for embedded entries, keyed by the [`CryptoId`](embark_format::CryptoId)
+//! that `embark-format` writes into every entry header.
+//!
+//! [`seal`] and [`open`] dispatch on that id at runtime; [`ChaCha20Poly1305`]
+//! and, behind the `aes` feature, [`Aes256Gcm`] are the same two ciphers
+//! named as types, through the sealed [`Aead`] trait. Both take a 32-byte
+//! key and a 12-byte nonce and produce a detached 16-byte tag, and both are
+//! always used with empty associated data.
+//!
+//! [`gen_key_nonce`] draws a fresh key and nonce for one entry from the
+//! operating system generator, and [`xor32`] is the masking primitive behind
+//! the build-time key obfuscation that `embark-macros` emits.
+//!
+//! # What this crate does not promise
+//!
+//! Nothing here decides *where the key lives*, and that is what determines
+//! whether an embedded file is actually confidential. `embark`'s default
+//! mode reconstructs the key from material compiled into the binary, which
+//! is obfuscation against a casual reader and not security against anyone
+//! willing to reverse the binary. Real confidentiality needs a key supplied
+//! at runtime. See `embark::EncryptedFile` for that distinction.
+//!
+//! # Features
+//!
+//! `enc` compiles the build-time sealing half (and the OS key generator with
+//! it), `dec` the runtime opening half. `aes` adds AES-256-GCM alongside the
+//! always-present ChaCha20-Poly1305.
 
-#[cfg(feature = "alloc")]
-extern crate alloc;
+#![cfg_attr(not(feature = "std"), no_std)]
 
 mod aead;
 

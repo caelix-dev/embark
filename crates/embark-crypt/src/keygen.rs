@@ -7,6 +7,7 @@ use zeroize::Zeroizing;
 /// plain `[u8; 32]` the caller owns, and this crate cannot wipe that copy --
 /// wrap it in [`Zeroizing`](zeroize::Zeroizing) at the call site if it holds
 /// a real secret.
+#[must_use]
 pub fn xor32(a: &[u8; 32], b: &[u8; 32]) -> [u8; 32] {
     let mut out = Zeroizing::new([0u8; 32]);
     for i in 0..32 {
@@ -34,6 +35,7 @@ pub fn xor32(a: &[u8; 32], b: &[u8; 32]) -> [u8; 32] {
 /// time inside a proc macro, where there is no safe fallback: substituting a
 /// weaker source would silently produce a guessable key.
 #[cfg(feature = "enc")]
+#[must_use]
 pub fn gen_key_nonce() -> ([u8; 32], [u8; 12]) {
     let mut key = Zeroizing::new([0u8; 32]);
     let mut nonce = [0u8; 12];

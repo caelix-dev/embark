@@ -51,6 +51,7 @@ pub trait Aead: sealed::Sealed {
 }
 
 /// The built-in ChaCha20-Poly1305 AEAD cipher.
+#[derive(Debug)]
 pub struct ChaCha20Poly1305;
 
 impl sealed::Sealed for ChaCha20Poly1305 {}
@@ -76,6 +77,7 @@ impl Aead for ChaCha20Poly1305 {
 /// The AES-256-GCM AEAD cipher, gated behind the `aes` feature. Same key
 /// (32B), nonce (12B), and tag (16B) shape as [`ChaCha20Poly1305`].
 #[cfg(feature = "aes")]
+#[derive(Debug)]
 pub struct Aes256Gcm;
 
 #[cfg(feature = "aes")]

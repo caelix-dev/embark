@@ -25,6 +25,7 @@ use crate::ChaCha20Poly1305;
 /// Also panics if `plain` exceeds the chosen cipher's maximum message
 /// length; see [`Aead::seal`](crate::Aead::seal).
 #[cfg(feature = "enc")]
+#[must_use]
 pub fn seal(
     crypto: CryptoId,
     key: &[u8; 32],

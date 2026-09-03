@@ -9,7 +9,7 @@ use chacha20poly1305::aead::{AeadInPlace, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 
 #[cfg(feature = "enc")]
-pub fn seal(key: &[u8; 32], nonce: &[u8; 12], plain: &[u8]) -> (Vec<u8>, [u8; 16]) {
+pub(crate) fn seal(key: &[u8; 32], nonce: &[u8; 12], plain: &[u8]) -> (Vec<u8>, [u8; 16]) {
     let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
     let mut buf = plain.to_vec();
     let tag = cipher
@@ -19,7 +19,12 @@ pub fn seal(key: &[u8; 32], nonce: &[u8; 12], plain: &[u8]) -> (Vec<u8>, [u8; 16
 }
 
 #[cfg(feature = "dec")]
-pub fn open(key: &[u8; 32], nonce: &[u8; 12], ct: &[u8], tag: &[u8; 16]) -> Result<Vec<u8>, Error> {
+pub(crate) fn open(
+    key: &[u8; 32],
+    nonce: &[u8; 12],
+    ct: &[u8],
+    tag: &[u8; 16],
+) -> Result<Vec<u8>, Error> {
     let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
     let mut buf = ct.to_vec();
     cipher
