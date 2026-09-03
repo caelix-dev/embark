@@ -11,7 +11,7 @@ pub fn write_varint(out: &mut alloc::vec::Vec<u8>, mut value: u64) {
     }
 }
 
-pub fn read_varint(input: &[u8]) -> Result<(u64, usize), crate::Error> {
+pub fn read_varint(input: &[u8]) -> crate::Result<(u64, usize)> {
     let mut value: u64 = 0;
     for (i, &byte) in input.iter().enumerate() {
         if i == 10 {

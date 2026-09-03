@@ -1,6 +1,6 @@
 use alloc::string::String;
 use alloc::vec::Vec;
-use embark_format::Error;
+use embark_format::{Error, Result};
 
 /// Type-state marker selecting [`EncryptedFile`]'s build-time
 /// embedded-key mode -- the default, so plain `EncryptedFile` means
@@ -201,10 +201,12 @@ impl EncryptedFile<EmbeddedKey> {
     /// Like [`decrypt`](EncryptedFile::decrypt), but decodes the result as
     /// UTF-8 and returns a `Result` (rather than panicking) if the
     /// decrypted bytes are not valid UTF-8.
-    pub fn decrypt_str(&self) -> Result<String, Error> {
+    pub fn decrypt_str(&self) -> Result<String> {
         let key = (self.key)();
         let bytes = crate::decode::decode(self.entry, Some(key))?.into_owned();
-        String::from_utf8(bytes).map_err(|_| Error::Utf8)
+        String::from_utf8(bytes).map_err(|e| Error::Utf8 {
+            valid_up_to: e.utf8_error().valid_up_to(),
+        })
     }
 }
 
@@ -232,7 +234,7 @@ impl EncryptedFile<RuntimeKey> {
     /// confidentiality, as strong as the caller's own key management.
     /// Returns `Err(Error::Auth)` if `key` is wrong (AEAD authentication
     /// fails cleanly rather than returning garbage).
-    pub fn decrypt_with(&self, key: &[u8; 32]) -> Result<Vec<u8>, Error> {
+    pub fn decrypt_with(&self, key: &[u8; 32]) -> Result<Vec<u8>> {
         Ok(crate::decode::decode(self.entry, Some(*key))?.into_owned())
     }
 }

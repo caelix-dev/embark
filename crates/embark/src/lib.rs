@@ -77,7 +77,7 @@ mod encrypted;
 mod meta;
 
 pub use bytes::EmbeddedBytes;
-pub use embark_format::Error;
+pub use embark_format::{Error, Result};
 #[cfg(feature = "std")]
 pub use embed::__dev_file;
 #[cfg(feature = "encryption")]

@@ -1,5 +1,5 @@
 #[cfg(feature = "dec")]
-use crate::Error;
+use crate::Result;
 use crate::{CodecId, CryptoId};
 #[cfg(feature = "enc")]
 use alloc::vec::Vec;
@@ -39,8 +39,8 @@ pub fn write_entry(
 }
 
 #[cfg(feature = "dec")]
-pub fn read_header(entry: &[u8]) -> Result<Header, Error> {
-    let tag_byte = *entry.first().ok_or(Error::Truncated)?;
+pub fn read_header(entry: &[u8]) -> Result<Header> {
+    let tag_byte = *entry.first().ok_or(crate::Error::Truncated)?;
     let codec = CodecId::from_u8(tag_byte & 0x0f)?;
     let crypto = CryptoId::from_u8(tag_byte >> 4)?;
     let (orig_len, used) = crate::read_varint(&entry[1..])?;
@@ -52,7 +52,7 @@ pub fn read_header(entry: &[u8]) -> Result<Header, Error> {
         CryptoId::ChaCha20Poly1305 | CryptoId::Aes256Gcm => {
             let end = offset + 28;
             if entry.len() < end {
-                return Err(Error::Truncated);
+                return Err(crate::Error::Truncated);
             }
             let mut nonce = [0u8; 12];
             let mut tag = [0u8; 16];

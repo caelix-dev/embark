@@ -1,5 +1,5 @@
 use alloc::borrow::Cow;
-use embark_format::read_header;
+use embark_format::{Result, read_header};
 
 /// A single, unencrypted embedded file, produced by
 /// [`embed_bytes!`](crate::embed_bytes) with a `codec = ...` argument.
@@ -64,7 +64,7 @@ impl EmbeddedBytes {
     /// The fallible form of [`data`](EmbeddedBytes::data): decodes and
     /// returns the file contents, or an error if the compiled-in entry is
     /// malformed.
-    pub fn try_data(&self) -> Result<Cow<'static, [u8]>, embark_format::Error> {
+    pub fn try_data(&self) -> Result<Cow<'static, [u8]>> {
         crate::decode::decode(self.entry, None)
     }
 

@@ -1,4 +1,5 @@
 use alloc::borrow::Cow;
+use embark_format::Result;
 
 /// One compiled-in `(path, entry)` pair in a `#[derive(Embed)]` manifest.
 ///
@@ -97,7 +98,7 @@ impl EmbeddedFile {
     /// The fallible form of [`data`](EmbeddedFile::data): decodes and
     /// returns the file contents, or an error if the compiled-in entry is
     /// malformed.
-    pub fn try_data(&self) -> Result<Cow<'static, [u8]>, embark_format::Error> {
+    pub fn try_data(&self) -> Result<Cow<'static, [u8]>> {
         match &self.source {
             Source::Static(entry) => {
                 let key = self.recon.map(|recon| recon());

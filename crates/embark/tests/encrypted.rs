@@ -82,3 +82,16 @@ fn aes_embedded_key_decrypts() {
     let f = EncryptedFile::with_embedded_key(entry, recon_77);
     assert_eq!(f.decrypt(), b"aes secret");
 }
+
+fn recon_11() -> [u8; 32] {
+    [0x11u8; 32]
+}
+
+#[test]
+fn decrypt_str_reports_where_utf8_broke() {
+    let key = [0x11u8; 32];
+    let entry: &'static [u8] =
+        Box::leak(encrypted_entry(b"ok\xFF!", key, [5u8; 12]).into_boxed_slice());
+    let f = EncryptedFile::with_embedded_key(entry, recon_11);
+    assert_eq!(f.decrypt_str(), Err(embark::Error::Utf8 { valid_up_to: 2 }));
+}

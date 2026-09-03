@@ -1,4 +1,4 @@
-use crate::Error;
+use crate::{Error, Result};
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,7 +16,7 @@ impl CodecId {
         self as u8
     }
 
-    pub fn from_u8(v: u8) -> Result<CodecId, Error> {
+    pub fn from_u8(v: u8) -> Result<CodecId> {
         match v {
             0 => Ok(CodecId::Store),
             1 => Ok(CodecId::Deflate),
@@ -42,7 +42,7 @@ impl CryptoId {
         self as u8
     }
 
-    pub fn from_u8(v: u8) -> Result<CryptoId, Error> {
+    pub fn from_u8(v: u8) -> Result<CryptoId> {
         match v {
             0 => Ok(CryptoId::None),
             1 => Ok(CryptoId::ChaCha20Poly1305),

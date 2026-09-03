@@ -1,11 +1,8 @@
 use alloc::borrow::Cow;
 use alloc::vec::Vec;
-use embark_format::{CodecId, CryptoId, Error, read_header};
+use embark_format::{CodecId, CryptoId, Error, Result, read_header};
 
-pub(crate) fn decode(
-    entry: &'static [u8],
-    key: Option<[u8; 32]>,
-) -> Result<Cow<'static, [u8]>, Error> {
+pub(crate) fn decode(entry: &'static [u8], key: Option<[u8; 32]>) -> Result<Cow<'static, [u8]>> {
     let header = read_header(entry)?;
     let payload = &entry[header.payload_offset..];
 

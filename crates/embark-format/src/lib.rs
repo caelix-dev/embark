@@ -14,7 +14,7 @@ pub use entry::Header;
 pub use entry::read_header;
 #[cfg(feature = "enc")]
 pub use entry::write_entry;
-pub use error::Error;
+pub use error::{Error, Result};
 pub use ids::{CodecId, CryptoId};
 pub use varint::read_varint;
 #[cfg(feature = "alloc")]

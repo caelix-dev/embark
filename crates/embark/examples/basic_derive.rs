@@ -10,7 +10,7 @@ struct Assets;
 
 fn main() {
     for path in Assets::iter() {
-        let file = Assets::get(&path).unwrap();
+        let file = Assets::get(path).unwrap();
         println!("{} -> {} bytes", path, file.data().len());
     }
 }
