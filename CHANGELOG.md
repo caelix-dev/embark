@@ -22,6 +22,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`codec = auto` changes meaning.** It used to try every enabled codec and
+  keep the smallest output, which since the `lzma-rust2` encoder landed has
+  meant "always LZMA" — the slowest codec to decode, chosen on a
+  size-only criterion, in a binary that pays the decode cost on every
+  access. `auto` now names the balance point instead, and the family has
+  three members, each keeping the smallest output among its own candidates:
+
+  | policy | candidates |
+  |---|---|
+  | `auto_fast` | `store`, `lz4`, `snappy` |
+  | `auto` | those, plus `deflate` and `zstd` |
+  | `auto_small` | those, plus `lzma` |
+
+  **`auto_small` is the old `auto`**, byte for byte, so the previous
+  behaviour is one word away. On a 468 KiB executable, `auto` picks DEFLATE
+  at 228,157 bytes and 305 MB/s where `auto_small` picks LZMA at 191,493
+  bytes and 45 MB/s: 19% larger, nearly seven times quicker to read back.
+  The crate is unpublished, so this breaks no released build.
+
+  A policy only encodes with its own candidates, which also cuts build time:
+  `auto_fast` never runs the LZMA encoder. And a policy whose candidates are
+  all disabled at feature level widens to the next tier instead of emitting
+  an uncompressed entry, so a build with only `lzma` on still compresses
+  under `auto_fast`.
+
+  The tier is a build-time policy only. An entry header still records the
+  single codec that won, so the on-binary format and the decode path are
+  unchanged. The names are `auto_fast` / `auto` / `auto_small` as bare
+  idents for `embed_bytes!` and `embed_crypt!`, and the same three as
+  strings for `#[derive(Embed)]`.
+- `embed_crypt!` and `#[derive(Embed)]`'s `encrypt` mode now run the codec
+  selection like every other path. Both used to map an `auto` argument to
+  Deflate and skip the selection entirely, on the argument that the size
+  delta mattered less under encryption. `auto` names a policy rather than a
+  codec now, so silently substituting one codec for it was no longer
+  defensible. Compression happens before sealing, so the selection reads the
+  plaintext and nothing about the cryptography changes.
 - Minimum supported Rust version raised from 1.74 to **1.87**. The 1.74
   claim was never true: the dependency graph has required a newer compiler
   since before it was written, and CI never caught it. 1.87 is the measured

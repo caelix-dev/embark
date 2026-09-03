@@ -28,7 +28,7 @@ use embark::Embed;
 
 #[derive(Embed)]
 #[embark(folder = "assets/")]
-#[embark(codec = "auto")] // picks the smallest of the codecs you've enabled
+#[embark(codec = "auto")] // best size/decode-speed trade of the enabled codecs
 struct Assets;
 
 fn main() {
@@ -80,7 +80,9 @@ fn main() {
 - `cipher = <ident>` — `chacha` (ChaCha20-Poly1305, the default) or `aes`
   (AES-256-GCM; needs the `aes` feature).
 - `codec = <ident>` — `store`, `deflate` (the default), `lz4`, `snappy`,
-  `zstd`, `lzma`, or `auto`; compression always happens before encryption.
+  `zstd`, `lzma`, or one of the `auto_fast` / `auto` / `auto_small`
+  policies below. Compression always happens before encryption, so a
+  policy selects on the plaintext and the cipher sees no difference.
 - `key = runtime` — switches the binding's type to
   `EncryptedFile<RuntimeKey>`: no key material is compiled in, and (enforced
   at compile time, not just by convention) that type has no `decrypt()`
@@ -106,6 +108,47 @@ Runnable versions of all four patterns live in
 [`crates/embark/examples/`](crates/embark/examples/) — try
 `cargo run -p embark --example basic_derive`, `--example single_file`,
 `--example compressed`, or `--example encrypted --features encryption`.
+
+## Choosing a codec: the `auto` policies
+
+You compress once, while building. Everyone who runs your binary
+decompresses on every access. Those are not the same cost, so `codec = auto`
+does not mean "smallest": it names a **tier** of candidate codecs, compresses
+with each of them, and keeps the smallest output *within that tier*.
+
+| policy | candidates |
+|---|---|
+| `auto_fast` | `store`, `lz4`, `snappy` |
+| `auto` | those, plus `deflate` and `zstd` |
+| `auto_small` | those, plus `lzma` |
+
+On a 468 KiB executable, decoded with the pure-Rust decoders `embark`
+actually ships:
+
+| policy | picks | payload | ratio | decode |
+|---|---|---:|---:|---:|
+| `auto_fast` | LZ4 | 312,340 B | 1.54x | 1,744 MB/s |
+| `auto` | DEFLATE | 228,157 B | 2.10x | 305 MB/s |
+| `auto_small` | LZMA | 191,493 B | 2.51x | 45 MB/s |
+
+`auto` gives up 19% of the size `auto_small` reaches and decodes nearly
+seven times faster for it. `auto_small` is the right answer when the binary
+is read once at startup and size is what you are paying for; `auto_fast` is
+for assets read in a hot path. Reach for a policy, not a codec — naming a
+codec directly still works and still overrides everything here.
+
+Three things worth knowing:
+
+- **A policy only encodes with its own candidates.** `auto_fast` never runs
+  the LZMA encoder, so it does not pay for output it would discard. See the
+  build-time note below.
+- **A tier with nothing enabled widens rather than giving up.** If none of a
+  policy's candidates are enabled as features on `embark`, it moves to the
+  next tier out; the tiers nest, so this is always well defined. A build
+  with only `lzma` on still compresses under `auto_fast`.
+- **The tier is a build-time policy.** An entry header records the one codec
+  that won, so nothing about the choice reaches the decode side and no
+  reader needs to know a policy existed.
 
 ## Security note
 
@@ -152,11 +195,11 @@ it the embedded data is unrecoverable.
 | `std`        | yes     | `std`-dependent APIs (dev-mode file reads, etc.) |
 | `alloc`      | yes     | `alloc`-only APIs; use with `--no-default-features` for `no_std` |
 | `derive`     | yes     | `#[derive(Embed)]`, `embed_bytes!`, `embed_crypt!` proc macros |
-| `deflate`    | yes     | the Deflate codec |
-| `lz4`        | no      | the LZ4 codec |
-| `snappy`     | no      | the Snappy codec (self-implemented, no dependency) |
-| `zstd`       | no      | the Zstd codec |
-| `lzma`       | no      | the LZMA codec (via `lzma-rust2`; see the build-time note) |
+| `deflate`    | yes     | the Deflate codec (a candidate from `auto` out) |
+| `lz4`        | no      | the LZ4 codec (a candidate in every `auto` policy) |
+| `snappy`     | no      | the Snappy codec, self-implemented, no dependency (every `auto` policy) |
+| `zstd`       | no      | the Zstd codec (a candidate from `auto` out) |
+| `lzma`       | no      | the LZMA codec, via `lzma-rust2` (`auto_small` only; see the build-time note) |
 | `encryption` | no      | `embed_crypt!`, `EncryptedFile` (ChaCha20-Poly1305) |
 | `aes`        | no      | AES-256-GCM cipher for `embed_crypt!(cipher = aes)` |
 | `metadata`   | no      | per-entry metadata helpers (e.g. content hashing) |
@@ -195,8 +238,23 @@ opt-level = 3
 Rules of thumb: under a few MB, `lzma` costs a few seconds per rebuild with
 that override in place and is usually worth it. Past roughly 16 MB per
 asset, reach for `zstd` or `deflate` instead, or keep `lzma` and accept a
-slow build. `codec = auto` tries every enabled codec, so it pays the LZMA
-cost too whenever `lzma` is on.
+slow build.
+
+Only `codec = auto_small` runs the LZMA encoder; the other two policies stop
+short of it and are cheap by comparison. Encoding a 32 MB asset with each,
+optimized:
+
+| policy | encode | payload |
+|---|---:|---:|
+| `auto_fast` | 0.24 s | 18,109,028 B |
+| `auto` | 4.59 s | 12,522,969 B |
+| `auto_small` | 20.72 s | 2,508,282 B |
+
+That asset is unusually redundant, which is why LZMA is five times smaller
+rather than the ~20% it manages on ordinary files. It is the shape of asset
+worth naming `auto_small` for explicitly: the tiers are fixed so that the
+codec a build picks stays predictable, which means `auto` will not go
+looking for a win like that on its own.
 
 ## Similar projects
 
