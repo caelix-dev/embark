@@ -4,6 +4,7 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+mod best;
 mod dispatch;
 mod store;
 #[cfg(feature = "deflate")]
@@ -13,6 +14,8 @@ mod lz4;
 #[cfg(feature = "snappy")]
 mod snappy;
 
+#[cfg(feature = "enc")]
+pub use best::compress_best;
 #[cfg(feature = "enc")]
 pub use dispatch::compress;
 #[cfg(feature = "dec")]
