@@ -18,11 +18,26 @@ pub fn compress_best(input: &[u8]) -> (CodecId, Vec<u8>) {
     };
 
     #[cfg(feature = "deflate")]
-    consider(CodecId::Deflate, crate::deflate::compress(input), &mut best_id, &mut best);
+    consider(
+        CodecId::Deflate,
+        crate::deflate::compress(input),
+        &mut best_id,
+        &mut best,
+    );
     #[cfg(feature = "lz4")]
-    consider(CodecId::Lz4, crate::lz4::compress(input), &mut best_id, &mut best);
+    consider(
+        CodecId::Lz4,
+        crate::lz4::compress(input),
+        &mut best_id,
+        &mut best,
+    );
     #[cfg(feature = "snappy")]
-    consider(CodecId::Snappy, crate::snappy::compress(input), &mut best_id, &mut best);
+    consider(
+        CodecId::Snappy,
+        crate::snappy::compress(input),
+        &mut best_id,
+        &mut best,
+    );
 
     let _ = &consider; // silence unused warning when no codec feature is on
     (best_id, best)

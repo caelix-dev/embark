@@ -212,7 +212,11 @@ mod tests {
 
     fn rt(data: &[u8]) {
         let c = compress(data);
-        assert_eq!(decompress(&c, data.len()).unwrap(), data, "roundtrip mismatch");
+        assert_eq!(
+            decompress(&c, data.len()).unwrap(),
+            data,
+            "roundtrip mismatch"
+        );
     }
 
     #[test]

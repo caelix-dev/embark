@@ -5,14 +5,14 @@
 extern crate alloc;
 
 mod best;
-mod dispatch;
-mod store;
 #[cfg(feature = "deflate")]
 mod deflate;
+mod dispatch;
 #[cfg(feature = "lz4")]
 mod lz4;
 #[cfg(feature = "snappy")]
 mod snappy;
+mod store;
 
 #[cfg(feature = "enc")]
 pub use best::compress_best;
