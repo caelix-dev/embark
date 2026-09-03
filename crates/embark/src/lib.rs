@@ -3,3 +3,9 @@
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
+
+mod bytes;
+mod decode;
+
+pub use bytes::EmbeddedBytes;
+pub use embark_format::Error;

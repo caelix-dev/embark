@@ -13,9 +13,13 @@ embark-codec.workspace = true
 embark-crypt = { workspace = true, optional = true }
 embark-macros = { workspace = true, optional = true }
 
+[dev-dependencies]
+embark-format = { workspace = true, features = ["enc"] }
+embark-codec = { workspace = true, features = ["enc"] }
+
 [features]
 default = ["std", "derive", "deflate"]
-std = ["embark-format/std", "embark-format/dec", "embark-codec/dec"]
+std = ["alloc", "embark-format/std", "embark-format/dec", "embark-codec/dec"]
 alloc = ["embark-format/alloc", "embark-format/dec", "embark-codec/dec", "embark-codec/alloc"]
 derive = ["dep:embark-macros"]
 deflate = ["embark-codec/deflate"]
