@@ -104,6 +104,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
@@ -114,7 +116,11 @@ jobs:
       # which is where missing `dep:`/`?/<feature>` wiring almost always
       # shows up -- including the kind of `--no-default-features` breakage
       # that a plain `--all-features` build can't catch.
-      - run: cargo hack check --workspace --feature-powerset --depth 2
+      # `clippy ... -- -D warnings` rather than `check`: a degenerate feature
+      # combination usually still compiles and only warns, so a compile-only
+      # sweep misses it. Running the lints across the powerset is what
+      # catches an import or a module that is dead under some combination.
+      - run: cargo hack clippy --workspace --feature-powerset --depth 2 -- -D warnings
 
   deny:
     runs-on: ubuntu-latest
