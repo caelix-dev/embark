@@ -22,8 +22,10 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-embark-format.workspace = true
-embark-codec.workspace = true
+# `alloc` and `dec` are not optional: every accessor on this crate's public
+# API hands back a `Cow` or a `Vec`, so the decode path is always compiled.
+embark-format = { workspace = true, features = ["alloc", "dec"] }
+embark-codec = { workspace = true, features = ["alloc", "dec"] }
 embark-crypt = { workspace = true, optional = true }
 embark-macros = { workspace = true, optional = true }
 
@@ -34,8 +36,10 @@ embark-crypt = { workspace = true, features = ["enc"] }
 
 [features]
 default = ["std", "derive", "deflate"]
-std = ["alloc", "embark-format/std", "embark-format/dec", "embark-codec/dec"]
-alloc = ["embark-format/alloc", "embark-format/dec", "embark-codec/dec", "embark-codec/alloc"]
+std = ["alloc", "embark-format/std"]
+# No-op, kept so existing `default-features = false, features = ["alloc"]`
+# manifests keep resolving. The crate always links `alloc`.
+alloc = []
 derive = ["dep:embark-macros"]
 deflate = ["embark-codec/deflate", "embark-macros?/deflate"]
 lz4 = ["embark-codec/lz4", "embark-macros?/lz4"]

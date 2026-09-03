@@ -49,8 +49,11 @@
 //!
 //! # Feature flags
 //!
-//! - `std` / `alloc` — runtime support; `alloc` alone keeps the crate
-//!   `no_std`.
+//! - `std` — enables the `#[embark(dev)]` read-from-disk escape hatch and
+//!   the `std::error::Error` integration. Turning it off keeps the crate
+//!   `no_std`; `alloc` is always required and always linked, since every
+//!   accessor returns a `Cow` or a `Vec`. The `alloc` feature still exists
+//!   and does nothing, so manifests that name it keep resolving.
 //! - `derive` — the `embed_bytes!`, `embed_crypt!`, and `#[derive(Embed)]`
 //!   macros (via `embark-macros`).
 //! - `deflate`, `lz4`, `snappy` — compression codecs (opt-in, pay for what
@@ -63,7 +66,6 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-#[cfg(feature = "alloc")]
 extern crate alloc;
 
 mod bytes;
