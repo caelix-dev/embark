@@ -52,6 +52,21 @@ fn runtime_key_decrypts_and_rejects_wrong() {
 // `compile_fail` doctest on `EncryptedFile::<RuntimeKey>::with_runtime_key`
 // in `crates/embark/src/encrypted.rs` for a checked demonstration of that.
 
+// A runtime-key handle is exactly its sealed entry: the mode-specific payload
+// is `()`, so there is no field for key material to sit in -- not even a
+// zeroed placeholder for a later refactor to hand out.
+#[test]
+fn runtime_key_handle_carries_no_key_material() {
+    assert_eq!(
+        size_of::<EncryptedFile<embark::RuntimeKey>>(),
+        size_of::<&'static [u8]>()
+    );
+    assert_eq!(
+        size_of::<EncryptedFile<embark::EmbeddedKey>>(),
+        size_of::<&'static [u8]>() + size_of::<fn() -> [u8; 32]>()
+    );
+}
+
 #[cfg(feature = "aes")]
 fn recon_77() -> [u8; 32] {
     [0x77u8; 32]

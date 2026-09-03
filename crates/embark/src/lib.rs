@@ -84,7 +84,7 @@ pub use embed::__dev_file;
 pub use embed::lookup_encrypted;
 pub use embed::{Embed, EmbeddedFile, Entries, Manifest, entries, lookup};
 #[cfg(feature = "encryption")]
-pub use encrypted::{EmbeddedKey, EncryptedFile, RuntimeKey};
+pub use encrypted::{EmbeddedKey, EncryptedFile, KeyMode, RuntimeKey};
 
 // Re-exported for advanced users who want to call a codec or cipher
 // directly, or implement one of these traits for manual (non-macro) use.

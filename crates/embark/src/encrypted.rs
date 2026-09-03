@@ -1,6 +1,5 @@
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::marker::PhantomData;
 use embark_format::Error;
 
 /// Type-state marker selecting [`EncryptedFile`]'s build-time
@@ -12,6 +11,35 @@ pub struct EmbeddedKey;
 /// Type-state marker selecting [`EncryptedFile`]'s runtime-key mode. See
 /// the [type-level docs](EncryptedFile) for what that means.
 pub struct RuntimeKey;
+
+mod sealed {
+    pub trait Sealed {}
+    impl Sealed for super::EmbeddedKey {}
+    impl Sealed for super::RuntimeKey {}
+}
+
+/// The set of [`EncryptedFile`] key modes: [`EmbeddedKey`] and
+/// [`RuntimeKey`], and nothing else.
+///
+/// Sealed on purpose — the two modes differ in what an `EncryptedFile`
+/// actually stores, which [`KeySource`](KeyMode::KeySource) names, and the
+/// crate relies on that being exactly these two.
+pub trait KeyMode: sealed::Sealed {
+    /// What a handle in this mode carries besides the sealed entry.
+    ///
+    /// For [`EmbeddedKey`] it is the macro-generated key-reconstruction
+    /// function; for [`RuntimeKey`] it is `()`, so a runtime-key handle has
+    /// nowhere to put key material even as a placeholder.
+    type KeySource: Copy;
+}
+
+impl KeyMode for EmbeddedKey {
+    type KeySource = fn() -> [u8; 32];
+}
+
+impl KeyMode for RuntimeKey {
+    type KeySource = ();
+}
 
 /// An encrypted, embedded file, produced by [`embed_crypt!`](crate::embed_crypt)
 /// or `#[embark(encrypt)]`.
@@ -47,7 +75,9 @@ pub struct RuntimeKey;
 ///   confidentiality (as strong as the caller's own key management).
 ///   There is no `decrypt()` on this mode: there is no embedded key to
 ///   decrypt with, so the method simply does not exist for this type
-///   rather than failing at runtime.
+///   rather than failing at runtime. The handle stores nothing but the
+///   sealed entry — the mode's [`KeySource`](KeyMode::KeySource) is `()`,
+///   so there is no field key material could occupy.
 ///
 /// Use the build-time mode for casual tamper-resistance (e.g. keeping a
 /// default config out of a quick `strings` scan); use the runtime-key mode
@@ -121,20 +151,13 @@ pub struct RuntimeKey;
 /// let key: [u8; 32] = load_key_from_somewhere();
 /// let plaintext = SEALED.decrypt_with(&key).unwrap();
 /// ```
-pub struct EncryptedFile<K = EmbeddedKey> {
+pub struct EncryptedFile<K: KeyMode = EmbeddedKey> {
     entry: &'static [u8],
-    // Per-build-randomized key reconstruction. For `EmbeddedKey` handles this
-    // is the function the macro generated to rebuild the embedded key; for
-    // `RuntimeKey` handles (which embed no key) it is an unused placeholder.
-    recon: fn() -> [u8; 32],
-    _mode: PhantomData<K>,
-}
-
-// Placeholder reconstruction for `RuntimeKey` handles, which never embed a
-// key and so never call `recon`. Kept as a plain `fn` so it is a
-// const-constructible function pointer.
-fn no_embedded_key() -> [u8; 32] {
-    [0u8; 32]
+    // Whatever the mode needs to open the entry, and nothing more: the
+    // per-build-randomized key-reconstruction function for `EmbeddedKey`,
+    // `()` for `RuntimeKey`. A runtime-key handle therefore has no field a
+    // key could be parked in, not even a zeroed placeholder.
+    key: K::KeySource,
 }
 
 impl EncryptedFile<EmbeddedKey> {
@@ -151,11 +174,7 @@ impl EncryptedFile<EmbeddedKey> {
         entry: &'static [u8],
         recon: fn() -> [u8; 32],
     ) -> EncryptedFile<EmbeddedKey> {
-        EncryptedFile {
-            entry,
-            recon,
-            _mode: PhantomData,
-        }
+        EncryptedFile { entry, key: recon }
     }
 
     /// Decrypts using the build-time embedded key.
@@ -173,7 +192,7 @@ impl EncryptedFile<EmbeddedKey> {
     /// Panics only if the embedded entry is malformed -- a build-time bug,
     /// not something a caller can trigger at runtime.
     pub fn decrypt(&self) -> Vec<u8> {
-        let key = (self.recon)();
+        let key = (self.key)();
         crate::decode::decode(self.entry, Some(key))
             .expect("embark: embedded entry is malformed (this is a build-time bug)")
             .into_owned()
@@ -183,7 +202,7 @@ impl EncryptedFile<EmbeddedKey> {
     /// UTF-8 and returns a `Result` (rather than panicking) if the
     /// decrypted bytes are not valid UTF-8.
     pub fn decrypt_str(&self) -> Result<String, Error> {
-        let key = (self.recon)();
+        let key = (self.key)();
         let bytes = crate::decode::decode(self.entry, Some(key))?.into_owned();
         String::from_utf8(bytes).map_err(|_| Error::Utf8)
     }
@@ -203,11 +222,7 @@ impl EncryptedFile<RuntimeKey> {
     /// f.decrypt(); // error[E0599]: no method named `decrypt` found
     /// ```
     pub const fn with_runtime_key(entry: &'static [u8]) -> EncryptedFile<RuntimeKey> {
-        EncryptedFile {
-            entry,
-            recon: no_embedded_key,
-            _mode: PhantomData,
-        }
+        EncryptedFile { entry, key: () }
     }
 
     /// Decrypts with a caller-supplied key, never relying on any key
