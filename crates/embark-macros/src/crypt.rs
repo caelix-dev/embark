@@ -1,0 +1,84 @@
+use embark_crypt::{gen_key_nonce, seal, xor32};
+use embark_format::{write_entry, CodecId, CryptoId};
+
+pub(crate) enum KeyMode {
+    BuildTime,
+    Runtime,
+}
+
+pub(crate) struct Sealed {
+    pub entry: Vec<u8>,
+    pub masked_mask: Option<([u8; 32], [u8; 32])>,
+}
+
+pub(crate) fn seal_file(data: &[u8], codec: CodecId, mode: KeyMode) -> Sealed {
+    // Compress first (never grow), then encrypt the compressed payload.
+    let compressed = embark_codec::compress(codec, data);
+    let (codec, compressed) = if compressed.len() < data.len() {
+        (codec, compressed)
+    } else {
+        (CodecId::Store, data.to_vec())
+    };
+
+    let (key, nonce, masked_mask) = match mode {
+        KeyMode::BuildTime => {
+            let (key, nonce) = gen_key_nonce();
+            let (mask, _) = gen_key_nonce();
+            (key, nonce, Some((xor32(&key, &mask), mask)))
+        }
+        KeyMode::Runtime => {
+            let key = env_key();
+            let (_, nonce) = gen_key_nonce();
+            (key, nonce, None)
+        }
+    };
+
+    let (ct, tag) = seal(&key, &nonce, &compressed);
+    let mut entry = Vec::new();
+    write_entry(
+        &mut entry,
+        codec,
+        CryptoId::ChaCha20Poly1305,
+        data.len() as u64,
+        Some((nonce, tag)),
+        &ct,
+    );
+    Sealed { entry, masked_mask }
+}
+
+fn env_key() -> [u8; 32] {
+    let hex = std::env::var("EMBARK_KEY")
+        .expect("embark: key = runtime requires the EMBARK_KEY env var (64 hex chars) at build time");
+    let hex = hex.trim();
+    assert_eq!(hex.len(), 64, "embark: EMBARK_KEY must be 64 hex chars (32 bytes)");
+    let mut key = [0u8; 32];
+    for (i, b) in key.iter_mut().enumerate() {
+        *b = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16)
+            .expect("embark: EMBARK_KEY must be valid hex");
+    }
+    key
+}
+
+// Used by derive(Embed) with #[embark(encrypt)]: every file in the folder is
+// sealed under one caller-supplied build-time key (obfuscated in the manifest
+// via masked/mask emitted by the derive). Returns just the entry bytes.
+pub(crate) fn seal_with_key(data: &[u8], codec: CodecId, key: [u8; 32]) -> Vec<u8> {
+    let compressed = embark_codec::compress(codec, data);
+    let (codec, compressed) = if compressed.len() < data.len() {
+        (codec, compressed)
+    } else {
+        (CodecId::Store, data.to_vec())
+    };
+    let (_, nonce) = gen_key_nonce(); // fresh per-file nonce
+    let (ct, tag) = seal(&key, &nonce, &compressed);
+    let mut entry = Vec::new();
+    write_entry(
+        &mut entry,
+        codec,
+        CryptoId::ChaCha20Poly1305,
+        data.len() as u64,
+        Some((nonce, tag)),
+        &ct,
+    );
+    entry
+}

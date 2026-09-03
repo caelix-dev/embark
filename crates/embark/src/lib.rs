@@ -21,7 +21,7 @@ pub use embed::{entries, lookup, Embed, EmbeddedFile, Entries, Manifest};
 pub use encrypted::EncryptedFile;
 
 #[cfg(feature = "derive")]
-pub use embark_macros::embed_bytes;
+pub use embark_macros::{embed_bytes, embed_crypt};
 
 #[cfg(feature = "metadata")]
 #[doc(hidden)]

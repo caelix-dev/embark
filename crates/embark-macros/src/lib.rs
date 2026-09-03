@@ -2,6 +2,8 @@
 
 mod args;
 mod build;
+mod crypt;
+mod crypt_args;
 
 use embark_format::CodecId;
 use proc_macro::TokenStream;
@@ -30,4 +32,31 @@ pub fn embed_bytes(input: TokenStream) -> TokenStream {
             quote!(::embark::EmbeddedBytes::from_entry(#lit)).into()
         }
     }
+}
+
+#[proc_macro]
+pub fn embed_crypt(input: TokenStream) -> TokenStream {
+    let parsed = syn::parse_macro_input!(input as crypt_args::CryptArgs);
+    let data = build::read(&parsed.path);
+    let codec = parsed.codec_id();
+    let mode = if parsed.runtime_key {
+        crypt::KeyMode::Runtime
+    } else {
+        crypt::KeyMode::BuildTime
+    };
+    let sealed = crypt::seal_file(&data, codec, mode);
+    let entry_lit = build::bytes_literal(&sealed.entry);
+    match sealed.masked_mask {
+        Some((masked, mask)) => {
+            let masked_arr = array32(&masked);
+            let mask_arr = array32(&mask);
+            quote!(::embark::EncryptedFile::with_embedded_key(#entry_lit, #masked_arr, #mask_arr)).into()
+        }
+        None => quote!(::embark::EncryptedFile::with_runtime_key(#entry_lit)).into(),
+    }
+}
+
+fn array32(bytes: &[u8; 32]) -> proc_macro2::TokenStream {
+    let elems = bytes.iter().map(|b| quote::quote!(#b));
+    quote::quote!([#(#elems),*])
 }
