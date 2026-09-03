@@ -41,7 +41,8 @@ pub fn read_header(entry: &[u8]) -> Result<Header, Error> {
 
     let (nonce, tag) = match crypto {
         CryptoId::None => (None, None),
-        CryptoId::ChaCha20Poly1305 => {
+        // Both AEAD ciphers share the same 12-byte nonce / 16-byte tag shape.
+        CryptoId::ChaCha20Poly1305 | CryptoId::Aes256Gcm => {
             let end = offset + 28;
             if entry.len() < end {
                 return Err(Error::Truncated);
@@ -109,6 +110,26 @@ mod tests {
         assert_eq!(h.nonce, Some(nonce));
         assert_eq!(h.tag, Some(tag));
         assert_eq!(&buf[h.payload_offset..], &[0xAA, 0xBB]);
+    }
+
+    #[test]
+    fn aes_encrypted_entry_roundtrip() {
+        let nonce = [3u8; 12];
+        let tag = [4u8; 16];
+        let mut buf = Vec::new();
+        write_entry(
+            &mut buf,
+            CodecId::Store,
+            CryptoId::Aes256Gcm,
+            5,
+            Some((nonce, tag)),
+            &[0xCC, 0xDD],
+        );
+        let h = read_header(&buf).unwrap();
+        assert_eq!(h.crypto, CryptoId::Aes256Gcm);
+        assert_eq!(h.nonce, Some(nonce));
+        assert_eq!(h.tag, Some(tag));
+        assert_eq!(&buf[h.payload_offset..], &[0xCC, 0xDD]);
     }
 
     #[test]

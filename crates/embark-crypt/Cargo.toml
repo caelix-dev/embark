@@ -5,11 +5,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "ChaCha20-Poly1305 AEAD wrapper for embark, with build-time key obfuscation."
+description = "ChaCha20-Poly1305 / AES-256-GCM AEAD wrapper for embark, with build-time key obfuscation."
 
 [dependencies]
 embark-format.workspace = true
 chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
+aes-gcm = { version = "0.10", default-features = false, features = ["alloc", "aes"], optional = true }
 
 [features]
 default = []
@@ -17,3 +18,4 @@ alloc = ["embark-format/alloc"]
 enc = ["alloc", "embark-format/enc", "std"]
 dec = ["alloc", "embark-format/dec"]
 std = []
+aes = ["dep:aes-gcm"]

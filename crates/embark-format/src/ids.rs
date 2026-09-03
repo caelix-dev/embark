@@ -34,6 +34,7 @@ impl CodecId {
 pub enum CryptoId {
     None = 0,
     ChaCha20Poly1305 = 1,
+    Aes256Gcm = 2,
 }
 
 impl CryptoId {
@@ -45,6 +46,7 @@ impl CryptoId {
         match v {
             0 => Ok(CryptoId::None),
             1 => Ok(CryptoId::ChaCha20Poly1305),
+            2 => Ok(CryptoId::Aes256Gcm),
             other => Err(Error::UnknownCrypto(other)),
         }
     }
@@ -75,6 +77,7 @@ mod tests {
     #[test]
     fn crypto_roundtrip() {
         assert_eq!(CryptoId::from_u8(1).unwrap(), CryptoId::ChaCha20Poly1305);
+        assert_eq!(CryptoId::from_u8(2).unwrap(), CryptoId::Aes256Gcm);
         assert!(matches!(
             CryptoId::from_u8(7),
             Err(crate::Error::UnknownCrypto(7))

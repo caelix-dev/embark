@@ -5,13 +5,20 @@
 extern crate alloc;
 
 mod aead;
-#[cfg(feature = "dec")]
-pub use aead::open;
-#[cfg(feature = "enc")]
-pub use aead::seal;
+
+#[cfg(feature = "aes")]
+mod aes;
 
 mod aead_trait;
+#[cfg(feature = "aes")]
+pub use aead_trait::Aes256Gcm;
 pub use aead_trait::{Aead, ChaCha20Poly1305};
+
+mod dispatch;
+#[cfg(feature = "dec")]
+pub use dispatch::open;
+#[cfg(feature = "enc")]
+pub use dispatch::seal;
 
 mod keygen;
 #[cfg(feature = "enc")]

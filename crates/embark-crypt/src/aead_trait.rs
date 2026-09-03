@@ -60,6 +60,30 @@ impl Aead for ChaCha20Poly1305 {
     }
 }
 
+/// The AES-256-GCM AEAD cipher, gated behind the `aes` feature. Same key
+/// (32B), nonce (12B), and tag (16B) shape as [`ChaCha20Poly1305`].
+#[cfg(feature = "aes")]
+pub struct Aes256Gcm;
+
+#[cfg(feature = "aes")]
+impl Aead for Aes256Gcm {
+    #[cfg(feature = "enc")]
+    fn seal(&self, key: &[u8; 32], nonce: &[u8; 12], plain: &[u8]) -> (Vec<u8>, [u8; 16]) {
+        crate::aes::seal(key, nonce, plain)
+    }
+
+    #[cfg(feature = "dec")]
+    fn open(
+        &self,
+        key: &[u8; 32],
+        nonce: &[u8; 12],
+        ct: &[u8],
+        tag: &[u8; 16],
+    ) -> Result<Vec<u8>, Error> {
+        crate::aes::open(key, nonce, ct, tag)
+    }
+}
+
 #[cfg(all(test, feature = "enc", feature = "dec"))]
 mod tests {
     use super::*;
@@ -72,6 +96,18 @@ mod tests {
         let (ct, tag) = ChaCha20Poly1305.seal(&key, &nonce, plain);
         assert_ne!(&ct[..], &plain[..]);
         let got = ChaCha20Poly1305.open(&key, &nonce, &ct, &tag).unwrap();
+        assert_eq!(got, plain);
+    }
+
+    #[cfg(feature = "aes")]
+    #[test]
+    fn roundtrips_via_trait_aes() {
+        let key = [0x11u8; 32];
+        let nonce = [0x22u8; 12];
+        let plain = b"trait roundtrip via Aes256Gcm";
+        let (ct, tag) = Aes256Gcm.seal(&key, &nonce, plain);
+        assert_ne!(&ct[..], &plain[..]);
+        let got = Aes256Gcm.open(&key, &nonce, &ct, &tag).unwrap();
         assert_eq!(got, plain);
     }
 }
