@@ -25,6 +25,12 @@ use embark_format::read_header;
 ///     embark::embed_bytes!("examples/assets/lipsum.txt", codec = deflate);
 /// let data = TEXT.data();
 /// assert!(data.starts_with(b"Embark packs your files"));
+///
+/// // `codec` takes a bare identifier, never a string. `auto` keeps the
+/// // smallest output among the codecs enabled on `embark`.
+/// static BEST: embark::EmbeddedBytes =
+///     embark::embed_bytes!("examples/assets/lipsum.txt", codec = auto);
+/// assert_eq!(BEST.data(), data);
 /// # }
 /// ```
 pub struct EmbeddedBytes {

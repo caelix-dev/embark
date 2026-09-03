@@ -68,6 +68,44 @@ pub struct RuntimeKey;
 /// # }
 /// ```
 ///
+/// `embed_crypt!` takes `codec` and `cipher` as **bare identifiers**, never
+/// as strings. (The `#[derive(Embed)]` attribute is the opposite: it takes
+/// the string forms, shown below.)
+///
+/// ```
+/// # #[cfg(all(feature = "derive", feature = "std"))] {
+/// static SEALED: embark::EncryptedFile = embark::embed_crypt!(
+///     "examples/assets/secret.txt",
+///     codec = deflate,
+///     cipher = chacha
+/// );
+/// assert!(SEALED.decrypt_str().unwrap().starts_with("the launch codes"));
+///
+/// // `cipher = aes` requires embark's `aes` feature; naming it without
+/// // that feature is a build error, not a silent fallback.
+/// # #[cfg(feature = "aes")] {
+/// static AES: embark::EncryptedFile =
+///     embark::embed_crypt!("examples/assets/secret.txt", cipher = aes);
+/// assert_eq!(AES.decrypt(), SEALED.decrypt());
+/// # }
+/// # }
+/// ```
+///
+/// The derive spells the same choices as strings, and seals every file in
+/// the folder under one shared build-time key:
+///
+/// ```
+/// # #[cfg(all(feature = "derive", feature = "std"))] {
+/// use embark::Embed as _;
+///
+/// #[derive(embark::Embed)]
+/// #[embark(folder = "examples/assets/docs", encrypt, cipher = "chacha")]
+/// struct Secrets;
+///
+/// assert!(Secrets::get("license.txt").unwrap().data().starts_with(b"MIT"));
+/// # }
+/// ```
+///
 /// Runtime key. The binding must be explicitly typed
 /// `EncryptedFile<RuntimeKey>`, and `decrypt_with` is the only way to open
 /// it. This one is not run as a doctest: `key = runtime` reads the key from
