@@ -63,3 +63,61 @@ jobs:
       # target name so both `ours_decodes_by_xz` and `xz_output_decodes_by_ours`
       # actually run, rather than matching (and silently skipping) by function name.
       - run: EMBARK_LZMA_INTEROP=1 cargo test -p embark-codec --features "enc dec lzma" --test lzma_interop
+
+  os-matrix:
+    # Cross-platform coverage for the stable leg only -- the toolchain
+    # matrix above already covers stable/beta/MSRV on Linux, so this adds
+    # the OS axis rather than the full toolchain x OS cross-product.
+    # windows-latest matters in particular: the author develops on Windows
+    # and embark-macros' folder walking touches CARGO_MANIFEST_DIR and path
+    # separators directly.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace --all-features
+
+  doc:
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc --workspace --all-features --no-deps
+
+  feature-powerset:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-hack
+      # The workspace has 11 feature flags, so the true powerset (2^11) is
+      # too large to run on every PR. --depth 2 checks every single feature
+      # and every pair together (179 combinations across the workspace),
+      # which is where missing `dep:`/`?/<feature>` wiring almost always
+      # shows up -- including the kind of `--no-default-features` breakage
+      # that a plain `--all-features` build can't catch.
+      - run: cargo hack check --workspace --feature-powerset --depth 2
+
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
