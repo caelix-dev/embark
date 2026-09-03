@@ -156,7 +156,7 @@ it the embedded data is unrecoverable.
 | `lz4`        | no      | the LZ4 codec |
 | `snappy`     | no      | the Snappy codec (self-implemented, no dependency) |
 | `zstd`       | no      | the Zstd codec |
-| `lzma`       | no      | the LZMA codec (self-implemented, no dependency) |
+| `lzma`       | no      | the LZMA codec (via `lzma-rust2`; see the build-time note) |
 | `encryption` | no      | `embed_crypt!`, `EncryptedFile` (ChaCha20-Poly1305) |
 | `aes`        | no      | AES-256-GCM cipher for `embed_crypt!(cipher = aes)` |
 | `metadata`   | no      | per-entry metadata helpers (e.g. content hashing) |
@@ -165,6 +165,38 @@ For `no_std` targets, build with `--no-default-features` and select `alloc`
 plus whichever codec features you need; see the `no_std` job in
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) for a worked example
 against `thumbv7em-none-eabihf`.
+
+### A note on `lzma` and build times
+
+LZMA gives the best ratio of the six codecs, and it is the slowest to
+encode by a wide margin. Encoding happens in the proc macro, so you pay it
+while compiling, not at run time.
+
+The part that surprises people: the macro re-runs whenever the crate holding
+the `embed_bytes!` or `#[derive(Embed)]` call recompiles. Editing **any**
+source file in that crate re-encodes the asset. Only a genuine no-op build
+is free. Measured here on a 4.7 MB JSON asset, rebuilding after touching an
+unrelated source file in the same crate:
+
+| codec | default `dev` profile | with the override below |
+|---|---:|---:|
+| `deflate` | 0.8 s | 0.8 s |
+| `lzma` | 24.6 s | 5.1 s |
+
+Proc macros build under the `dev` profile, so the encoder itself runs
+unoptimized. Optimizing build-time code recovers most of the difference —
+put this in the manifest of the crate that does the embedding:
+
+```toml
+[profile.dev.build-override]
+opt-level = 3
+```
+
+Rules of thumb: under a few MB, `lzma` costs a few seconds per rebuild with
+that override in place and is usually worth it. Past roughly 16 MB per
+asset, reach for `zstd` or `deflate` instead, or keep `lzma` and accept a
+slow build. `codec = auto` tries every enabled codec, so it pays the LZMA
+cost too whenever `lzma` is on.
 
 ## Similar projects
 
