@@ -18,6 +18,35 @@
 //! — see [`EncryptedFile`] for the distinction and how to get real
 //! confidentiality with a runtime key.
 //!
+//! # Example
+//!
+//! The examples throughout these docs embed this crate's own
+//! `examples/assets` folder, so they run as written. Paths are resolved
+//! relative to your crate's `CARGO_MANIFEST_DIR`.
+//!
+//! ```
+//! # #[cfg(all(feature = "derive", feature = "deflate", feature = "std"))] {
+//! use embark::Embed as _;
+//!
+//! // A single file, verbatim -- exactly `include_bytes!`.
+//! static HELLO: &[u8] = embark::embed_bytes!("examples/assets/hello.txt");
+//! assert_eq!(HELLO, b"hello embark");
+//!
+//! // A single file, compressed at build time and decompressed on access.
+//! static TEXT: embark::EmbeddedBytes =
+//!     embark::embed_bytes!("examples/assets/lipsum.txt", codec = deflate);
+//! assert!(TEXT.data().starts_with(b"Embark packs your files"));
+//!
+//! // A whole folder, addressable by path.
+//! #[derive(embark::Embed)]
+//! #[embark(folder = "examples/assets/docs", codec = "auto")]
+//! struct Docs;
+//!
+//! assert_eq!(Docs::iter().count(), 2);
+//! assert!(Docs::get("about.txt").unwrap().data().starts_with(b"Embark"));
+//! # }
+//! ```
+//!
 //! # Feature flags
 //!
 //! - `std` / `alloc` — runtime support; `alloc` alone keeps the crate

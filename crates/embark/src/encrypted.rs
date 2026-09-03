@@ -52,6 +52,37 @@ pub struct RuntimeKey;
 /// Use the build-time mode for casual tamper-resistance (e.g. keeping a
 /// default config out of a quick `strings` scan); use the runtime-key mode
 /// whenever the embedded content actually needs to stay confidential.
+///
+/// # Examples
+///
+/// Build-time embedded key (the default). Note the plain `EncryptedFile`
+/// type and the infallible `decrypt`:
+///
+/// ```
+/// # #[cfg(all(feature = "derive", feature = "std"))] {
+/// static SECRET: embark::EncryptedFile =
+///     embark::embed_crypt!("examples/assets/secret.txt");
+///
+/// assert!(SECRET.decrypt_str().unwrap().starts_with("the launch codes"));
+/// assert_eq!(SECRET.decrypt(), SECRET.decrypt_str().unwrap().as_bytes());
+/// # }
+/// ```
+///
+/// Runtime key. The binding must be explicitly typed
+/// `EncryptedFile<RuntimeKey>`, and `decrypt_with` is the only way to open
+/// it. This one is not run as a doctest: `key = runtime` reads the key from
+/// the `EMBARK_KEY` environment variable at *build* time, so it cannot be
+/// expanded from within a test that does not control the compiler's
+/// environment.
+///
+/// ```ignore
+/// // Built with EMBARK_KEY=<64 hex chars> in the environment.
+/// static SEALED: embark::EncryptedFile<embark::RuntimeKey> =
+///     embark::embed_crypt!("examples/assets/secret.txt", key = runtime);
+///
+/// let key: [u8; 32] = load_key_from_somewhere();
+/// let plaintext = SEALED.decrypt_with(&key).unwrap();
+/// ```
 pub struct EncryptedFile<K = EmbeddedKey> {
     entry: &'static [u8],
     // Per-build-randomized key reconstruction. For `EmbeddedKey` handles this

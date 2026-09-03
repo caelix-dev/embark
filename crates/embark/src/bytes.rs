@@ -9,6 +9,24 @@ use embark_format::read_header;
 /// call with no `codec` argument, the macro instead expands to a plain
 /// `include_bytes!` (a `&'static [u8]`), not this type — `EmbeddedBytes` only
 /// shows up once compression is in play.
+///
+/// # Example
+///
+/// Both forms, against this crate's own `examples/assets`:
+///
+/// ```
+/// # #[cfg(all(feature = "derive", feature = "deflate", feature = "std"))] {
+/// // No codec: a zero-cost `include_bytes!`, so the type is `&[u8]`.
+/// static RAW: &[u8] = embark::embed_bytes!("examples/assets/hello.txt");
+/// assert_eq!(RAW, b"hello embark");
+///
+/// // With a codec: an `EmbeddedBytes`, decompressed lazily on first access.
+/// static TEXT: embark::EmbeddedBytes =
+///     embark::embed_bytes!("examples/assets/lipsum.txt", codec = deflate);
+/// let data = TEXT.data();
+/// assert!(data.starts_with(b"Embark packs your files"));
+/// # }
+/// ```
 pub struct EmbeddedBytes {
     entry: &'static [u8],
 }

@@ -16,14 +16,26 @@ pub struct Manifest {
 ///
 /// # Example
 ///
-/// ```ignore
-/// #[derive(embark::Embed)]
-/// #[embark(folder = "assets")]
-/// struct Assets;
+/// Embedding this crate's own `examples/assets/docs` folder, which holds
+/// `about.txt` and `license.txt`:
 ///
-/// let file = Assets::get("logo.png").unwrap();
-/// let data = file.data();
-/// for path in Assets::iter() { /* ... */ }
+/// ```
+/// # #[cfg(all(feature = "derive", feature = "std"))] {
+/// use embark::Embed as _;
+///
+/// #[derive(embark::Embed)]
+/// #[embark(folder = "examples/assets/docs")]
+/// struct Docs;
+///
+/// let file = Docs::get("license.txt").unwrap();
+/// assert!(file.data().starts_with(b"MIT"));
+/// assert_eq!(file.path(), "license.txt");
+///
+/// let paths: Vec<_> = Docs::iter().collect();
+/// assert_eq!(paths, ["about.txt", "license.txt"]);
+///
+/// assert!(Docs::get("nope.txt").is_none());
+/// # }
 /// ```
 pub trait Embed {
     /// Looks up a single file by its path relative to the embedded folder.

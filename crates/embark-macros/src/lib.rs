@@ -32,6 +32,11 @@ use quote::quote;
 /// static BEST: embark::EmbeddedBytes = embark::embed_bytes!("assets/data.json", codec = "auto");
 /// ```
 ///
+/// <div class="warning">Not run as a doctest: expanding this macro needs
+/// the `embark` crate, and `embark-macros` cannot depend on it without a
+/// dependency cycle. A runnable version, embedding real files, is on
+/// [`EmbeddedBytes`](https://docs.rs/embark/*/embark/struct.EmbeddedBytes.html).</div>
+///
 /// `path` is resolved relative to the crate's `CARGO_MANIFEST_DIR`. The
 /// optional `codec = <ident>` argument selects the compressor: `store`,
 /// `deflate`, `lz4`, `snappy`, `zstd`, `lzma`, or `auto` (tries every codec
@@ -102,6 +107,13 @@ pub fn embed_bytes(input: TokenStream) -> TokenStream {
 ///     embark::embed_crypt!("assets/config.enc", key = runtime);
 /// let plaintext = SEALED.decrypt_with(&my_key).unwrap();
 /// ```
+///
+/// <div class="warning">Not run as a doctest: expanding this macro needs
+/// the `embark` crate, and `embark-macros` cannot depend on it without a
+/// dependency cycle. A runnable version of the embedded-key half is on
+/// [`EncryptedFile`](https://docs.rs/embark/*/embark/struct.EncryptedFile.html).
+/// The runtime-key half cannot be a doctest anywhere: `key = runtime`
+/// reads `EMBARK_KEY` from the environment at build time.</div>
 ///
 /// `path` is resolved relative to `CARGO_MANIFEST_DIR`, as in
 /// [`embed_bytes!`]. Independent, comma-separated arguments may follow
@@ -181,6 +193,11 @@ pub fn embed_crypt(input: TokenStream) -> TokenStream {
 /// let logo = Assets::get("logo.png").unwrap();
 /// for path in Assets::iter() { /* ... */ }
 /// ```
+///
+/// <div class="warning">Not run as a doctest: expanding this macro needs
+/// the `embark` crate, and `embark-macros` cannot depend on it without a
+/// dependency cycle. A runnable version, embedding a real folder, is on
+/// [`Embed`](https://docs.rs/embark/*/embark/trait.Embed.html).</div>
 ///
 /// Configured with a single `#[embark(...)]` attribute, whose keys are:
 ///
