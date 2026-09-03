@@ -18,19 +18,22 @@ ignore = [
 # https://embarkstudios.github.io/cargo-deny/checks/licenses/cfg.html
 [licenses]
 # embark itself is MIT-only (see LICENSE-MIT / the workspace `license` key).
-# This allow-list is for the *dependency* tree, not embark's own code: most
-# deps are dual MIT/Apache-2.0 and are satisfied via the MIT side of that
-# OR, so allowing Apache-2.0 here does not relicense anything embark ships.
+# This allow-list is for the *dependency* tree, not embark's own code.
+#
+# Apache-2.0 is deliberately NOT allowed. Most deps are dual MIT/Apache-2.0
+# and resolve through the MIT side, so the whole tree passes without it --
+# verified with `cargo deny check licenses`. Leaving it out means a future
+# dependency that is Apache-only fails the check instead of being accepted
+# silently, which is what we want for an MIT-only project.
 allow = [
     "MIT",
-    "Apache-2.0",
     # adler2 (miniz_oxide -> embark-codec): "0BSD OR MIT OR Apache-2.0"
     "0BSD",
     # subtle (AEAD stack -> embark-crypt): "BSD-3-Clause", no OR
     "BSD-3-Clause",
     # unicode-ident (syn/proc-macro2 -> embark-macros):
-    # "(MIT OR Apache-2.0) AND Unicode-3.0" — the AND means both sides must
-    # be allowed, so this is required alongside MIT/Apache-2.0 above.
+    # "(MIT OR Apache-2.0) AND Unicode-3.0": the OR resolves to MIT, but
+    # the AND means the Unicode-3.0 side must be allowed too.
     "Unicode-3.0",
 ]
 confidence-threshold = 0.8
