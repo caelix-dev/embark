@@ -143,8 +143,16 @@ fn check_shape(input: &syn::DeriveInput) -> syn::Result<()> {
     const EXPECTED: &str = "#[derive(Embed)] expects a unit struct, e.g. `struct Assets;`";
 
     if !input.generics.params.is_empty() {
+        // Spanned at the `<` rather than at the parameter list as a whole:
+        // covering the list means joining several token spans, which only
+        // some compilers can do, so the caret would change width from one
+        // toolchain to the next.
+        let at = input
+            .generics
+            .lt_token
+            .map_or_else(|| input.ident.span(), |lt| lt.span());
         return Err(syn::Error::new(
-            input.generics.span(),
+            at,
             format!("{EXPECTED}; generic parameters are not supported"),
         ));
     }
