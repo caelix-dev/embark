@@ -19,8 +19,11 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 embark-format.workspace = true
-miniz_oxide = { version = "0.8", default-features = false, features = ["with-alloc"], optional = true }
-lz4_flex = { version = "0.11", default-features = false, features = ["safe-decode", "safe-encode"], optional = true }
+miniz_oxide = { version = "0.9", default-features = false, features = ["with-alloc"], optional = true }
+# `alloc` became its own feature in 0.14; without it the Vec-returning
+# entry points are compiled out. `std` and `frame` stay off: we only use
+# the block API, and `frame` would pull in twox-hash.
+lz4_flex = { version = "0.14", default-features = false, features = ["alloc", "safe-decode", "safe-encode"], optional = true }
 # ruzstd is a pure-Rust, no_std+alloc zstd implementation. Default features
 # ("hash", "std") are dropped: "hash" only gates the optional xxhash content
 # checksum (we don't need it), and "std" would pull in std::io. Snappy is

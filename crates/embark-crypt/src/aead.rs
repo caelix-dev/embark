@@ -5,15 +5,15 @@ use alloc::vec::Vec;
 
 #[cfg(feature = "dec")]
 use chacha20poly1305::Tag;
-use chacha20poly1305::aead::{AeadInPlace, KeyInit};
+use chacha20poly1305::aead::{AeadInOut, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 
 #[cfg(feature = "enc")]
 pub(crate) fn seal(key: &[u8; 32], nonce: &[u8; 12], plain: &[u8]) -> (Vec<u8>, [u8; 16]) {
-    let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
+    let cipher = ChaCha20Poly1305::new(&Key::from(*key));
     let mut buf = plain.to_vec();
     let tag = cipher
-        .encrypt_in_place_detached(Nonce::from_slice(nonce), b"", &mut buf)
+        .encrypt_inout_detached(&Nonce::from(*nonce), b"", buf.as_mut_slice().into())
         .expect("embark-crypt: plaintext exceeds the 256 GiB ChaCha20-Poly1305 message limit");
     (buf, tag.into())
 }
@@ -25,14 +25,14 @@ pub(crate) fn open(
     ct: &[u8],
     tag: &[u8; 16],
 ) -> Result<Vec<u8>, Error> {
-    let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
+    let cipher = ChaCha20Poly1305::new(&Key::from(*key));
     let mut buf = ct.to_vec();
     cipher
-        .decrypt_in_place_detached(
-            Nonce::from_slice(nonce),
+        .decrypt_inout_detached(
+            &Nonce::from(*nonce),
             b"",
-            &mut buf,
-            Tag::from_slice(tag),
+            buf.as_mut_slice().into(),
+            &Tag::from(*tag),
         )
         .map_err(|_| Error::Auth)?;
     Ok(buf)
@@ -41,6 +41,31 @@ pub(crate) fn open(
 #[cfg(all(test, feature = "enc", feature = "dec"))]
 mod tests {
     use super::*;
+
+    // Captured from this crate on the previous release of the AEAD stack.
+    // The interface underneath has been rewritten twice now, and each time
+    // the only thing that matters is that the bytes did not move: a binary
+    // built against an older `embark` has to keep decrypting under a newer
+    // one, and nothing about a round trip would notice if it stopped.
+    #[test]
+    fn matches_the_bytes_this_crate_has_always_produced() {
+        let (ct, tag) = seal(&[0x42u8; 32], &[0x24u8; 12], b"embark encrypted payload");
+        let hex = |b: &[u8]| {
+            b.iter()
+                .map(|x| alloc::format!("{x:02x}"))
+                .collect::<alloc::string::String>()
+        };
+        assert_eq!(
+            hex(&ct),
+            "816ae76f99b578cdeb08faf2946378fcdfb928c8ca4c3553",
+            "ChaCha20-Poly1305 ciphertext moved"
+        );
+        assert_eq!(
+            hex(&tag),
+            "4ef9e4a2427db48368c59a9b67a2907d",
+            "ChaCha20-Poly1305 tag moved"
+        );
+    }
 
     #[test]
     fn roundtrip() {

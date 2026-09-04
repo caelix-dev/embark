@@ -38,8 +38,6 @@ allow = [
     "Apache-2.0",
     # adler2 (miniz_oxide -> embark-codec): "0BSD OR MIT OR Apache-2.0"
     "0BSD",
-    # subtle (AEAD stack -> embark-crypt): "BSD-3-Clause", no OR
-    "BSD-3-Clause",
     # unicode-ident (syn/proc-macro2 -> embark-macros):
     # "(MIT OR Apache-2.0) AND Unicode-3.0": the OR resolves to MIT, but
     # the AND means the Unicode-3.0 side must be allowed too.

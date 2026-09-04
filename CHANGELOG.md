@@ -54,6 +54,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Dependencies moved to their current majors: `syn` 2 → 3, `chacha20poly1305`
+  0.10 → 0.11 with `aes-gcm` 0.10 → 0.11 and `aes` 0.8 → 0.9 alongside it,
+  `getrandom` 0.3 → 0.4, `lz4_flex` 0.11 → 0.14, `miniz_oxide` 0.8 → 0.9, and
+  `actions/checkout` v4 → v7.
+
+  Two needed work. The AEAD crates moved to `aead` 0.6, where `AeadInPlace`
+  became `AeadInOut` and the in-place methods take an `InOutBuf`. `lz4_flex`
+  split `alloc` out into its own feature, and without it the entry points
+  that return a `Vec` are compiled out, which is a compile error rather than
+  a silent one.
+
+  Both ciphers produce the same bytes they did before, which is now a test
+  rather than an assumption: a fixed key, nonce and plaintext, and the
+  ciphertext and tag written out. A binary built against an older `embark`
+  has to keep decrypting under a newer one, and a round trip would not notice
+  if that stopped being true.
+- `BSD-3-Clause` is gone from `deny.toml`'s allow-list. It was there for
+  `subtle`, which the new AEAD stack no longer pulls in, and `cargo deny`
+  reports an allowance nothing matches.
+
 - **`codec = auto` changes meaning.** It used to try every enabled codec and
   keep the smallest output, which since the `lzma-rust2` encoder landed has
   meant "always LZMA" — the slowest codec to decode, chosen on a
