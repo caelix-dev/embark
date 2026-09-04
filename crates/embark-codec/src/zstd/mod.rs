@@ -58,14 +58,35 @@ pub(crate) fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error
     }
     let mut decoder = ruzstd::decoding::StreamingDecoder::new(input).map_err(|_| Error::Corrupt)?;
     // `orig_len` comes straight from the (attacker-controllable) entry header,
-    // so size the buffer through a fallible reservation: a claim like 1 TiB
-    // becomes a returned `Error::Corrupt` instead of an eager allocation that
-    // aborts the process on failure.
+    // so nothing is sized from it. The buffer grows to hold what the frame
+    // actually produces, and a claim the frame cannot honour ends as a length
+    // disagreement below rather than as an allocation.
+    //
+    // Reserving `orig_len` up front and filling it does not work, whatever
+    // the reservation's error handling: an operating system that overcommits
+    // hands back a mapping for a claim of any size, and it is writing to it
+    // that kills the process. That is the shape this had, and it survived
+    // until a macOS runner met it -- Windows commits up front and refuses,
+    // and Linux's heuristic refuses an obviously impossible one, so both of
+    // them returned the error the test was looking for.
     let mut out: Vec<u8> = Vec::new();
-    out.try_reserve_exact(orig_len)
-        .map_err(|_| Error::Corrupt)?;
-    out.resize(orig_len, 0u8);
-    decoder.read_exact(&mut out).map_err(|_| Error::Corrupt)?;
+    let mut chunk = [0u8; 8 * 1024];
+    loop {
+        let read = decoder.read(&mut chunk).map_err(|_| Error::Corrupt)?;
+        if read == 0 {
+            break;
+        }
+        // Refuse to hold more than was claimed, so a frame that expands
+        // without end cannot outrun the check at the end of the loop.
+        if read > orig_len - out.len() {
+            return Err(Error::Corrupt);
+        }
+        out.try_reserve(read).map_err(|_| Error::Corrupt)?;
+        out.extend_from_slice(&chunk[..read]);
+    }
+    if out.len() != orig_len {
+        return Err(Error::Corrupt);
+    }
     Ok(out)
 }
 

@@ -25,15 +25,28 @@ pub(crate) fn decode(
     // size from the entry header; `RangeDecoder::new` above only requires 5
     // bytes of well-formed range-coder preamble, so a 13-byte header plus a
     // handful of stream bytes is enough to reach this point with an
-    // arbitrarily large `orig_len`. Reserve fallibly so that claim turns into
-    // `Error::Corrupt` rather than an allocator abort.
+    // arbitrarily large `orig_len`.
+    // Reserve for what is plausible rather than for what is claimed. The
+    // claim is the attacker's; the buffer grows as real output arrives, and a
+    // claim the payload cannot honour ends as a decode failure below.
+    const EAGER: usize = 64 * 1024;
     let mut out: Vec<u8> = Vec::new();
-    out.try_reserve_exact(orig_len)
+    out.try_reserve(orig_len.min(EAGER))
         .map_err(|_| Error::Corrupt)?;
     let mut state = 0usize;
     let (mut rep0, mut rep1, mut rep2, mut rep3) = (0u32, 0u32, 0u32, 0u32);
 
     while out.len() < orig_len {
+        // A complete stream never asks for a byte it does not have, so the
+        // moment it does, it is over. Checking here rather than only after
+        // the loop is what bounds the work by the input: `orig_len` is the
+        // caller's claim, and the range decoder happily keeps decoding zeros
+        // once the real bytes run out, so without this a fourteen-byte stream
+        // claiming a terabyte decodes a terabyte of nonsense before anyone
+        // objects.
+        if rc.read_past > 0 {
+            return Err(Error::Truncated);
+        }
         let pos_state = model.pos_state(out.len());
         if model.decode_is_match(&mut rc, state, pos_state) == 0 {
             // Literal.

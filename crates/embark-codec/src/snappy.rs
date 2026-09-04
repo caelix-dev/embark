@@ -128,10 +128,13 @@ pub(crate) fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error
     // `orig_len` is bounded to `u32::MAX` (~4 GiB) by the preamble varint
     // above, but that is still an allocation an attacker can demand from a
     // 5-byte input, and it is far more than the `no_std` targets this crate
-    // supports can ever satisfy. Reserve fallibly so the claim turns into
-    // `Error::Corrupt` rather than an allocator abort.
+    // supports can ever satisfy.
+    // Reserve for what is plausible rather than for what is claimed. The
+    // claim is the attacker's; the buffer grows as real output arrives, and a
+    // claim the payload cannot honour ends as a decode failure below.
+    const EAGER: usize = 64 * 1024;
     let mut out: Vec<u8> = Vec::new();
-    out.try_reserve_exact(orig_len)
+    out.try_reserve(orig_len.min(EAGER))
         .map_err(|_| Error::Corrupt)?;
 
     while pos < input.len() {

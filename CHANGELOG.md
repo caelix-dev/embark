@@ -111,6 +111,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A hostile `orig_len` could still take the process down, on any operating
+  system that overcommits.** Every decoder sized its output buffer from the
+  length in the entry header, and turned a refused reservation into
+  `Error::Corrupt`. A refusal is what Windows gives, and what Linux's
+  heuristic gives for an obviously impossible claim; macOS hands back a
+  mapping of any size and lets the process die when it is written to. Zstd
+  and LZ4 then wrote to it, and LZMA decoded zeros toward the claimed length
+  until it had produced a terabyte of them.
+
+  None of them size from the claim any more. Zstd grows its buffer as the
+  frame actually produces output, and rejects a frame that produces more than
+  was claimed rather than silently truncating it, which also closes a hole.
+  LZ4 has to have its whole buffer up front, since a match copies from
+  earlier output, so it bounds the claim by what the payload could expand to
+  under the format's own limits. LZMA now stops the moment its range decoder
+  reads past the end of the input, which a complete stream never does; the
+  check existed but only ran after the decode loop it was supposed to bound.
+
+  The first CI run on a macOS runner found this. It is reachable only from an
+  entry that was not written by this crate's own encoder.
+- Line endings are pinned by `.gitattributes`. The embedded fixtures are
+  compared byte for byte, and a Windows checkout was turning their LFs into
+  CRLFs, so two derive tests asserted on content the repository never held.
+
 - Build-time key and nonce generation now draws from the OS CSPRNG. The
   previous SplitMix64 generator produced a key recoverable from the
   cleartext nonce that ships in every encrypted entry header, which

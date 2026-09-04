@@ -13,12 +13,25 @@ pub(crate) fn compress(input: &[u8]) -> Vec<u8> {
 pub(crate) fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
     // `lz4_flex::block::decompress` preallocates `orig_len` internally via
     // `vec![0u8; orig_len]`, and `orig_len` comes straight from the
-    // (attacker-controllable) entry header. We size the output buffer
-    // ourselves through a fallible reservation, then decompress into it with
-    // `decompress_into` (which writes through a bounds-checked slice sink and
-    // performs no allocation of its own), so a hostile length becomes a
-    // returned `Error::Corrupt` instead of an eager allocation that aborts
-    // the process on failure.
+    // (attacker-controllable) entry header. `decompress_into` allocates
+    // nothing and writes through a bounds-checked slice sink, so the buffer
+    // is ours to size -- but it has to exist in full before decoding starts,
+    // since a match copies from earlier output.
+    //
+    // A fallible reservation is not enough on its own. An operating system
+    // that overcommits grants a mapping for a claim of any size and only
+    // kills the process once it is written to, which is exactly what filling
+    // the buffer does next. So the claim is checked against what this payload
+    // could possibly expand to before any of it is believed.
+    //
+    // The bound is the format's: the cheapest way to emit bytes is one match,
+    // costing a token and a two-byte offset for the first 19 and one more
+    // byte per further 255. Anything past that is not a length this input can
+    // decode to, whoever wrote the header.
+    let ceiling = input.len().saturating_mul(255).saturating_add(64);
+    if orig_len > ceiling {
+        return Err(Error::Corrupt);
+    }
     let mut out: Vec<u8> = Vec::new();
     out.try_reserve_exact(orig_len)
         .map_err(|_| Error::Corrupt)?;

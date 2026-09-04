@@ -1,0 +1,13 @@
+# Everything in the repository is stored with LF, and checked out with LF on
+# every platform. Left to itself, Git for Windows rewrites LF to CRLF on
+# checkout, which is fine for source and not fine for anything compared byte
+# for byte.
+* text=auto eol=lf
+
+# The embedded fixtures are exactly that case. Tests read them off disk, hand
+# them to the macros, and assert on the bytes that come back, so a fixture has
+# to arrive as it was committed. Marking them binary keeps every conversion,
+# present and future, away from them.
+crates/embark/tests/assets/** -text
+crates/embark/tests/fixtures/** -text
+crates/embark/examples/assets/** -text

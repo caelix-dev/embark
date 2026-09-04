@@ -226,7 +226,15 @@ mod tests {
         input.extend_from_slice(&0u32.to_le_bytes()); // dict size (unchecked)
         input.extend_from_slice(&(hostile_orig_len as u64).to_le_bytes());
         input.extend_from_slice(&[0u8, 0, 0, 0, 0]); // range-coder preamble
-        assert!(decompress(&input, hostile_orig_len).is_err());
+        // `Truncated`, specifically, and the variant is the point: it is the
+        // range decoder reaching the end of these five bytes that stops this,
+        // not a refused allocation. A refusal only ever arrived on platforms
+        // that decline an impossible reservation up front, and the ones that
+        // overcommit instead decoded a terabyte of zeros.
+        assert_eq!(
+            decompress(&input, hostile_orig_len),
+            Err(embark_format::Error::Truncated)
+        );
     }
 
     #[test]
