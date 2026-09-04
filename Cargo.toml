@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/caelix-dev/embark"
@@ -12,10 +12,10 @@ readme = "README.md"
 rust-version = "1.87"
 
 [workspace.dependencies]
-embark-format = { version = "0.1.0", path = "crates/embark-format", default-features = false }
-embark-codec = { version = "0.1.0", path = "crates/embark-codec", default-features = false }
-embark-crypt = { version = "0.1.0", path = "crates/embark-crypt", default-features = false }
-embark-macros = { version = "0.1.0", path = "crates/embark-macros" }
+embark-format = { version = "0.1.1", path = "crates/embark-format", default-features = false }
+embark-codec = { version = "0.1.1", path = "crates/embark-codec", default-features = false }
+embark-crypt = { version = "0.1.1", path = "crates/embark-crypt", default-features = false }
+embark-macros = { version = "0.1.1", path = "crates/embark-macros" }
 
 # Lint policy for every crate in the workspace; each opts in with
 # `[lints] workspace = true`. CI runs clippy with `-D warnings`, so anything

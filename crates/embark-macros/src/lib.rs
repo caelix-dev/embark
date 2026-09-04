@@ -269,15 +269,21 @@ fn expand_crypt(parsed: crypt_args::CryptArgs) -> syn::Result<proc_macro2::Token
 ///   (`include` is empty, or it matches at least one `include` pattern).
 ///   `exclude` takes priority over `include`.
 ///
-///   **Glob matching does not cross `/`.** `*` and `?` match any run of
-///   characters *except* `/` -- they do not recurse into
-///   subdirectories on their own, even though the folder walk itself is
-///   recursive. So `include = "*.png"` matches `logo.png` but **not**
-///   `sub/logo.png`; matching against a nested file needs an explicit
-///   path, e.g. `include = "sub/*.png"` (still only one level) or use
-///   `include = "*"`, which matches any top-level file (a relative path
-///   containing no `/`) but still not `sub/logo.png`. There is no
-///   `**`-style multi-segment wildcard.
+///   `?` matches one character other than `/`, and `*` any run of them, so
+///   a single `*` stays inside one path segment: `include = "*.png"`
+///   matches `logo.png` but not `sub/logo.png`.
+///
+///   `**` crosses `/`. As a whole segment it stands for any number of
+///   segments, zero included, which is what makes `**/*.png` the way to say
+///   "a `.png` anywhere":
+///
+///   | pattern | matches |
+///   |---|---|
+///   | `*.png` | `logo.png` |
+///   | `sub/*.png` | `sub/logo.png` |
+///   | `**/*.png` | `logo.png`, `sub/logo.png`, `a/b/logo.png` |
+///   | `sub/**` | everything under `sub/`, at any depth |
+///   | `**` | everything |
 ///
 /// # Rebuilds
 ///

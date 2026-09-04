@@ -144,7 +144,7 @@ dependencies = [
 
 [[package]]
 name = "embark"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "embark-codec",
  "embark-crypt",
@@ -155,7 +155,7 @@ dependencies = [
 
 [[package]]
 name = "embark-codec"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "embark-format",
  "lz4_flex",
@@ -166,7 +166,7 @@ dependencies = [
 
 [[package]]
 name = "embark-crypt"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -178,11 +178,11 @@ dependencies = [
 
 [[package]]
 name = "embark-format"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "embark-macros"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "embark-codec",
  "embark-crypt",

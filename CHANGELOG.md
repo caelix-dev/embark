@@ -5,7 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.1] - 2026-09-04
+
+### Fixed
+
+- **`**` in an `include` or `exclude` pattern now crosses `/`.** It used to
+  be two `*`s in a row, and a `*` stops at a separator, so `**/*.png` meant
+  exactly one directory deep -- it found `sub/logo.png` and missed both
+  `logo.png` and `a/b/logo.png`. As a whole segment it now stands for any
+  number of segments, zero among them, which is what it means in
+  `.gitignore` and in every other crate that filters a folder. `sub/**`
+  takes everything under `sub/` at any depth, and a bare `**` takes
+  everything.
+
+  A pattern containing `**` therefore matches more files than it did in
+  0.1.0. One without `**` is unaffected: `*` and `?` still stay inside a
+  segment.
+- The README documents `include` and `exclude` at all, which it did not.
+  They existed only in the derive's API docs, so the depth rule was
+  something you found out by having a file quietly not embedded.
+
+## [0.1.0] - 2026-09-04
 
 ### Added
 
@@ -51,6 +71,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   labels each item with the feature that gates it. The manifests already
   asked for `--cfg docsrs`; nothing read it, and almost every item here is
   behind a feature, so the rendered docs read as though none of them were.
+- Initial workspace scaffolding with five crates: `embark`, `embark-format`,
+  `embark-codec`, `embark-crypt`, and `embark-macros`.
+- Raw, compressed, and encrypted file embedding through a single
+  `EmbeddedFile` / `EmbeddedBytes` / `EncryptedFile` API surface.
+- `#[derive(Embed)]` to embed a whole folder, with `folder`, `codec`,
+  `encrypt`, `dev`, `include`, and `exclude` attributes.
+- `embed_bytes!` for single-file embedding, with an optional `codec`
+  argument (`store`, `deflate`, `lz4`, `snappy`, `zstd`, `lzma`, or
+  `auto`).
+- `embed_crypt!` for single-file authenticated encryption, with build-time
+  (obfuscated) or `key = runtime` key modes, an optional `codec` argument
+  that compresses before sealing, and a `cipher` argument selecting
+  `chacha` or `aes`.
+- Codecs: Store, Deflate, LZ4, Zstd, and self-implemented Snappy and LZMA
+  encoder/decoder pairs.
+- AEAD ciphers: ChaCha20-Poly1305 by default and AES-256-GCM under the
+  `aes` feature, behind a shared `Aead` trait with dispatch by `CryptoId`.
+- Build-time key obfuscation: each build emits a randomized
+  key-reconstruction function rather than storing the key as a contiguous
+  literal.
+- `#[embark(dev)]` dev-mode: reads files straight off disk in debug builds
+  instead of the compiled-in copy, for fast edit/reload loops.
+- `no_std` (`alloc`-only) support for `embark-format`, `embark-codec`,
+  `embark-crypt`, and `embark`.
 
 ### Changed
 
@@ -188,32 +232,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `[profile.dev.build-override]` mitigation. `lzma-rust2` is Apache-2.0 and
   is a build-time dependency only; it is never linked into a consumer's
   binary, and embark's own crates stay MIT.
-
-## [0.1.0]
-
-### Added
-
-- Initial workspace scaffolding with five crates: `embark`, `embark-format`,
-  `embark-codec`, `embark-crypt`, and `embark-macros`.
-- Raw, compressed, and encrypted file embedding through a single
-  `EmbeddedFile` / `EmbeddedBytes` / `EncryptedFile` API surface.
-- `#[derive(Embed)]` to embed a whole folder, with `folder`, `codec`,
-  `encrypt`, `dev`, `include`, and `exclude` attributes.
-- `embed_bytes!` for single-file embedding, with an optional `codec`
-  argument (`store`, `deflate`, `lz4`, `snappy`, `zstd`, `lzma`, or
-  `auto`).
-- `embed_crypt!` for single-file authenticated encryption, with build-time
-  (obfuscated) or `key = runtime` key modes, an optional `codec` argument
-  that compresses before sealing, and a `cipher` argument selecting
-  `chacha` or `aes`.
-- Codecs: Store, Deflate, LZ4, Zstd, and self-implemented Snappy and LZMA
-  encoder/decoder pairs.
-- AEAD ciphers: ChaCha20-Poly1305 by default and AES-256-GCM under the
-  `aes` feature, behind a shared `Aead` trait with dispatch by `CryptoId`.
-- Build-time key obfuscation: each build emits a randomized
-  key-reconstruction function rather than storing the key as a contiguous
-  literal.
-- `#[embark(dev)]` dev-mode: reads files straight off disk in debug builds
-  instead of the compiled-in copy, for fast edit/reload loops.
-- `no_std` (`alloc`-only) support for `embark-format`, `embark-codec`,
-  `embark-crypt`, and `embark`.

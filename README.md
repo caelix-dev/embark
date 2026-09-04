@@ -39,6 +39,22 @@ fn main() {
 }
 ```
 
+#### Picking which files go in
+
+`include` and `exclude` filter the folder walk. Both are globs over each
+file's path relative to `folder`, both may be repeated, and `exclude` wins:
+
+```rust
+#[derive(Embed)]
+#[embark(folder = "assets", include = "**/*.png", include = "**/*.svg", exclude = "**/tmp/**")]
+struct Icons;
+```
+
+`?` is one character and `*` any run of them, neither crossing `/`. `**`
+does cross it, and as a whole segment stands for any number of segments —
+zero among them, so `**/*.png` finds a `.png` at the top level as well as
+further down. With no `include`, everything not excluded is embedded.
+
 ### `embed_bytes!` — embed a single file
 
 ```rust
