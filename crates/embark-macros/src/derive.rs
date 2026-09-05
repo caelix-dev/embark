@@ -99,7 +99,7 @@ pub(crate) fn expand(input: &syn::DeriveInput) -> syn::Result<proc_macro2::Token
             quote! {
                 #[cfg(debug_assertions)]
                 {
-                    return ::embark::__dev_file(#folder_abs_str, path);
+                    return ::embark::__dev_file(MANIFEST, #folder_abs_str, path);
                 }
             },
             quote!(#[allow(unreachable_code)]),

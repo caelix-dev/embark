@@ -280,9 +280,36 @@ pub fn lookup_encrypted(
 #[cfg(feature = "std")]
 #[doc(hidden)]
 #[must_use]
-pub fn __dev_file(folder_abs: &str, path: &str) -> Option<EmbeddedFile> {
-    let full = std::path::Path::new(folder_abs).join(path);
-    let bytes = std::fs::read(full).ok()?;
+pub fn __dev_file(
+    manifest: &'static [Manifest],
+    folder_abs: &str,
+    path: &str,
+) -> Option<EmbeddedFile> {
+    use std::path::Path;
+
+    // `path` is whatever the caller passed to `get`, and in the setting this
+    // mode exists for -- a development server handing out assets by request
+    // path -- that is a string off the network. Dev mode serves the files
+    // the derive embedded, re-read from disk so an edit shows up without a
+    // rebuild; it does not serve anything else. So the request has to be a
+    // name the manifest holds, exactly: not `../x`, not an absolute path,
+    // not a file the derive's `exclude` left out, and not `INDEX.HTML` for
+    // an `index.html` on a filesystem that would happily open it. Each of
+    // those is `None` in a release build, and a lookup that succeeds only in
+    // debug is a bug that ships.
+    lookup(manifest, path)?;
+
+    // A manifest name joined under the folder lands under the folder --
+    // unless it is a symlink that points out of it, which the walk that
+    // built the manifest may have been told to follow. Resolve and check.
+    let folder = Path::new(folder_abs);
+    let real = std::fs::canonicalize(folder.join(path)).ok()?;
+    let root = std::fs::canonicalize(folder).ok()?;
+    if !real.starts_with(&root) {
+        return None;
+    }
+
+    let bytes = std::fs::read(&real).ok()?;
     Some(EmbeddedFile {
         source: Source::Owned(bytes),
         path: Cow::Owned(path.to_string()),

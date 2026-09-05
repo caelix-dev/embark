@@ -263,6 +263,13 @@ fn expand_crypt(parsed: crypt_args::CryptArgs) -> syn::Result<proc_macro2::Token
 /// - `dev` — in debug builds only, `get()` reads the file live from disk
 ///   (relative to `folder`) instead of returning the compiled-in copy, for
 ///   fast iteration without rebuilding. Has no effect in release builds.
+///
+///   It serves the files the derive embedded and nothing else: a path has
+///   to be one the manifest holds, exactly, or `get()` returns `None` just
+///   as the release build would. A file added to the folder since the last
+///   build is not served until the crate rebuilds, and one that `exclude`
+///   left out is never served. This is what keeps a development server
+///   that hands out assets by request path from handing out `../.env`.
 /// - `include = "..."` / `exclude = "..."` — glob filters over each file's
 ///   path relative to `folder`; repeatable (each occurrence adds one
 ///   pattern). A file is embedded when it matches no `exclude` pattern and
