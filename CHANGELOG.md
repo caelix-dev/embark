@@ -5,6 +5,63 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-09-05
+
+A hardening release. Each item was found by trying the attack rather than
+by reading the code, and each is now a test.
+
+### Fixed
+
+- **`#[embark(dev)]` served any file the process could read.** In a debug
+  build, `get()` joined the request onto the folder and read the result,
+  with nothing checked: `../outside.txt`, `..\outside.txt`, `/etc/passwd`
+  and `C:\Windows\win.ini` all came back, the last two because a join with
+  an absolute path drops the base outright. The mode exists so a development
+  server can hand out assets by request path, which makes that a
+  network-reachable file read during development. Release builds were never
+  affected.
+
+  Dev mode now serves exactly the files the derive embedded, re-read from
+  disk, and nothing else: a request has to be a name the manifest holds or
+  it is `None`, as it would be in release. That one rule also stops it
+  serving files `exclude` left out, and stops Windows from answering
+  `INDEX.HTML` or `index.html.` for an `index.html` the manifest knows under
+  one spelling. A file added to the folder since the last build is no longer
+  served until the crate rebuilds; it never appeared in `iter()` either.
+- **A symbolic link inside the folder was followed and its target embedded.**
+  One pointing at `~/.ssh/id_rsa` or a credential file put that file into
+  the binary, on the release build on CI. A link is now a build error that
+  names it and the way out: `#[embark(follow_links)]`, or replace it with
+  the file. With links followed, each real directory is walked once, so a
+  link back to an ancestor ends the walk instead of never ending it.
+  Reproduced with a directory junction on Windows, which counts as a link.
+- **A sealed entry's tag covered the payload and not the header.** The
+  codec, cipher and claimed length in front of it could be rewritten under a
+  tag that still verified, and the plaintext handed to a decoder it was
+  never sealed for. Not a confidentiality break, since none of that helps
+  without the key, but not what an AEAD format is supposed to say either.
+  The header bytes are now the associated data.
+- `orig_len` is checked to fit in `usize` before use, rather than truncated
+  by `as` on a 32-bit target.
+
+### Changed
+
+- **Every `seal` and `open` in `embark-crypt` takes the associated data
+  explicitly**, and `Header` gained `aad_len` saying how many leading bytes
+  to pass. There is no empty default, since an empty default is the mistake
+  above. This is the API break behind the version.
+- **Encrypted entries from 0.1.x no longer open.** Every entry is produced by
+  the same build that reads it, so this only reaches a caller that kept
+  sealed bytes from `embark-crypt` or `embark-format` directly across the
+  upgrade. Re-seal them.
+- `#[derive(Embed)]` accepts `follow_links`.
+
+Verified not to be a problem, for the record: 48,000 mutated entries across
+every codec and both ciphers produced no panic, only `Err`; release-mode
+lookup is a binary search over a static table and cannot reach the
+filesystem; `key = runtime` embeds no key material; nonces come from the
+OS CSPRNG per file.
+
 ## [0.1.1] - 2026-09-04
 
 ### Fixed

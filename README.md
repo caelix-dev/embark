@@ -204,6 +204,14 @@ is compiled in; the caller supplies the key at run time (e.g. from an
 environment variable, a secrets manager, or a hardware token), and without
 it the embedded data is unrecoverable.
 
+**Two things the build itself guards against.** A symbolic link inside the
+embedded folder is a build error, because following one that points at a
+key or a credential file would embed that file into the binary; add
+`follow_links` to `#[embark(...)]` if you mean it. And `#[embark(dev)]`, which
+reads assets live from disk in debug builds, serves exactly the files the
+derive embedded and nothing else, so a development server handing out
+assets by request path cannot be asked for `../.env`.
+
 ## Feature flags
 
 | Feature      | Default | Enables |
