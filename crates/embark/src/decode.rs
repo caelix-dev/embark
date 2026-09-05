@@ -52,7 +52,10 @@ pub(crate) fn decode(entry: &'static [u8], key: Option<[u8; 32]>) -> Result<Cow<
     if header.codec == CodecId::Store {
         return Ok(plaintext);
     }
-    let orig = header.orig_len as usize;
+    // The claim is a `u64` because the format is; on a 32-bit target a claim
+    // above `usize::MAX` would wrap under `as`, and a wrapped claim is one a
+    // decoder could accidentally satisfy.
+    let orig = usize::try_from(header.orig_len).map_err(|_| Error::Corrupt)?;
     let out: Vec<u8> = embark_codec::decompress(header.codec, &plaintext, orig)?;
     Ok(Cow::Owned(out))
 }
