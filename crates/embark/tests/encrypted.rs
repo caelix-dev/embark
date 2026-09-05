@@ -8,14 +8,18 @@
 #![cfg(all(feature = "std", feature = "encryption"))]
 use embark::EncryptedFile;
 use embark_crypt::seal;
-use embark_format::{CodecId, CryptoId, write_entry};
+use embark_format::{CodecId, CryptoId, write_entry, write_header};
 
 fn encrypted_entry(plain: &[u8], key: [u8; 32], nonce: [u8; 12]) -> Vec<u8> {
     encrypted_entry_with(CryptoId::ChaCha20Poly1305, plain, key, nonce)
 }
 
 fn encrypted_entry_with(crypto: CryptoId, plain: &[u8], key: [u8; 32], nonce: [u8; 12]) -> Vec<u8> {
-    let (ct, tag) = seal(crypto, &key, &nonce, plain);
+    // The header is sealed in as associated data, so it is written first
+    // and handed to the cipher before the entry is assembled.
+    let mut header = Vec::new();
+    write_header(&mut header, CodecId::Store, crypto, plain.len() as u64);
+    let (ct, tag) = seal(crypto, &key, &nonce, &header, plain);
     let mut entry = Vec::new();
     write_entry(
         &mut entry,
@@ -52,6 +56,31 @@ fn runtime_key_decrypts_and_rejects_wrong() {
     let f: EncryptedFile<embark::RuntimeKey> = EncryptedFile::with_runtime_key(entry);
     assert_eq!(f.decrypt_with(&key).unwrap(), b"cfg");
     assert!(f.decrypt_with(&[0u8; 32]).is_err());
+}
+
+// The tag covers the header, not just the payload. An entry whose codec
+// nibble or claimed length was rewritten after sealing must fail as `Auth`
+// -- the tag no longer stands for what is in front of it -- and never reach
+// a decoder with a plaintext it was not meant for.
+#[test]
+fn a_rewritten_header_fails_authentication() {
+    let key = [0x66u8; 32];
+    let sealed = encrypted_entry(b"header-bound", key, [6u8; 12]);
+    let open = |entry: Vec<u8>| {
+        let entry: &'static [u8] = Box::leak(entry.into_boxed_slice());
+        EncryptedFile::with_runtime_key(entry).decrypt_with(&key)
+    };
+    assert_eq!(open(sealed.clone()).unwrap(), b"header-bound");
+
+    // Store -> Deflate, keeping the cipher id in the high nibble.
+    let mut codec_swapped = sealed.clone();
+    codec_swapped[0] = (codec_swapped[0] & 0xf0) | CodecId::Deflate.as_u8();
+    assert_eq!(open(codec_swapped), Err(embark::Error::Auth));
+
+    // The claimed length is the second byte for a payload this short.
+    let mut length_changed = sealed;
+    length_changed[1] ^= 0x01;
+    assert_eq!(open(length_changed), Err(embark::Error::Auth));
 }
 
 // `EncryptedFile<RuntimeKey>` has no `decrypt()` method at all -- calling it

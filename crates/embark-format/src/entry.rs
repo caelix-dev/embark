@@ -32,6 +32,24 @@ pub struct Header {
     /// Offset into the entry at which the payload begins, that is the
     /// length of the header this `Header` was parsed from.
     pub payload_offset: usize,
+    /// Length of the leading bytes -- the tag byte and the length varint --
+    /// that a sealed entry's AEAD tag covers as associated data, so that the
+    /// codec, cipher and claimed length cannot be rewritten under a tag that
+    /// still verifies. `entry[..aad_len]` is what to hand the cipher.
+    pub aad_len: usize,
+}
+
+/// Appends the part of the header every entry has -- the tag byte and the
+/// length varint -- to `out`.
+///
+/// These are also the bytes a sealed entry's AEAD tag covers as associated
+/// data, which is why they are reachable on their own: whoever seals a
+/// payload writes them first, hands them to the cipher, and then writes the
+/// entry with [`write_entry`], which produces the same bytes again.
+#[cfg(feature = "enc")]
+pub fn write_header(out: &mut Vec<u8>, codec: CodecId, crypto: CryptoId, orig_len: u64) {
+    out.push(codec.as_u8() | (crypto.as_u8() << 4));
+    crate::write_varint(out, orig_len);
 }
 
 /// Appends one complete entry -- header followed by `payload` -- to `out`.
@@ -50,8 +68,7 @@ pub fn write_entry(
     nonce_tag: Option<([u8; 12], [u8; 16])>,
     payload: &[u8],
 ) {
-    out.push(codec.as_u8() | (crypto.as_u8() << 4));
-    crate::write_varint(out, orig_len);
+    write_header(out, codec, crypto, orig_len);
     if let Some((nonce, tag)) = nonce_tag {
         out.extend_from_slice(&nonce);
         out.extend_from_slice(&tag);
@@ -106,6 +123,7 @@ pub fn read_header(entry: &[u8]) -> Result<Header> {
         nonce,
         tag,
         payload_offset: offset,
+        aad_len: 1 + used,
     })
 }
 

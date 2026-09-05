@@ -1,7 +1,7 @@
 use crate::args::CodecArg;
 use crate::build;
 use embark_crypt::{gen_key_nonce, seal};
-use embark_format::{CryptoId, write_entry};
+use embark_format::{CodecId, CryptoId, write_entry, write_header};
 use proc_macro2::Span;
 
 pub(crate) enum KeyMode {
@@ -65,7 +65,13 @@ pub(crate) fn seal_file(
         }
     };
 
-    let (ct, tag) = seal(crypto, &key, &nonce, &compressed);
+    let (ct, tag) = seal(
+        crypto,
+        &key,
+        &nonce,
+        &header(codec, crypto, data),
+        &compressed,
+    );
     let mut entry = Vec::new();
     write_entry(
         &mut entry,
@@ -79,6 +85,15 @@ pub(crate) fn seal_file(
         entry,
         key: embedded_key,
     })
+}
+
+/// The header bytes the tag binds: the same ones `write_entry` will write
+/// in front of the nonce, produced by the same function so they cannot
+/// drift apart.
+fn header(codec: CodecId, crypto: CryptoId, data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    write_header(&mut out, codec, crypto, data.len() as u64);
+    out
 }
 
 fn env_key() -> Result<[u8; 32], String> {
@@ -115,7 +130,13 @@ pub(crate) fn seal_with_key(
 ) -> Result<Vec<u8>, String> {
     let (codec, compressed) = build::compress_verified(codec, data, shown)?;
     let (_, nonce) = gen_key_nonce(); // fresh per-file nonce
-    let (ct, tag) = seal(crypto, &key, &nonce, &compressed);
+    let (ct, tag) = seal(
+        crypto,
+        &key,
+        &nonce,
+        &header(codec, crypto, data),
+        &compressed,
+    );
     let mut entry = Vec::new();
     write_entry(
         &mut entry,

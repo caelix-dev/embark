@@ -11,7 +11,9 @@ use embark_format::Error;
 use crate::Aes256Gcm;
 use crate::ChaCha20Poly1305;
 
-/// Seal `plain` under the AEAD cipher named by `crypto`.
+/// Seal `plain` under the AEAD cipher named by `crypto`, binding `aad` --
+/// the entry header, see [`Header::aad_len`](embark_format::Header::aad_len)
+/// -- into the tag.
 ///
 /// # Panics
 ///
@@ -31,13 +33,14 @@ pub fn seal(
     crypto: CryptoId,
     key: &[u8; 32],
     nonce: &[u8; 12],
+    aad: &[u8],
     plain: &[u8],
 ) -> (Vec<u8>, [u8; 16]) {
     use crate::Aead;
     match crypto {
-        CryptoId::ChaCha20Poly1305 => ChaCha20Poly1305.seal(key, nonce, plain),
+        CryptoId::ChaCha20Poly1305 => ChaCha20Poly1305.seal(key, nonce, aad, plain),
         #[cfg(feature = "aes")]
-        CryptoId::Aes256Gcm => Aes256Gcm.seal(key, nonce, plain),
+        CryptoId::Aes256Gcm => Aes256Gcm.seal(key, nonce, aad, plain),
         other => panic!(
             "embark-crypt: seal requires a real AEAD cipher, got crypto id {}",
             other.as_u8()
@@ -45,7 +48,8 @@ pub fn seal(
     }
 }
 
-/// Open `ct` (with detached `tag`) under the AEAD cipher named by `crypto`.
+/// Open `ct` (with detached `tag`) under the AEAD cipher named by `crypto`,
+/// verifying `aad` -- the entry header -- along with it.
 ///
 /// Unlike [`seal`], this is reachable with an arbitrary on-binary
 /// `CryptoId` (untrusted entry data), so an unknown or feature-disabled
@@ -61,14 +65,15 @@ pub fn open(
     crypto: CryptoId,
     key: &[u8; 32],
     nonce: &[u8; 12],
+    aad: &[u8],
     ct: &[u8],
     tag: &[u8; 16],
 ) -> Result<Vec<u8>, Error> {
     use crate::Aead;
     match crypto {
-        CryptoId::ChaCha20Poly1305 => ChaCha20Poly1305.open(key, nonce, ct, tag),
+        CryptoId::ChaCha20Poly1305 => ChaCha20Poly1305.open(key, nonce, aad, ct, tag),
         #[cfg(feature = "aes")]
-        CryptoId::Aes256Gcm => Aes256Gcm.open(key, nonce, ct, tag),
+        CryptoId::Aes256Gcm => Aes256Gcm.open(key, nonce, aad, ct, tag),
         // Reached for `CryptoId::None` (never sealed, so never a valid
         // `open` target), for `Aes256Gcm` when the `aes` feature is off, and
         // for any cipher `CryptoId` gained after this build was compiled.
@@ -84,8 +89,8 @@ mod tests {
     fn chacha_dispatch_roundtrip() {
         let key = [7u8; 32];
         let nonce = [8u8; 12];
-        let (ct, tag) = seal(CryptoId::ChaCha20Poly1305, &key, &nonce, b"dispatch");
-        let got = open(CryptoId::ChaCha20Poly1305, &key, &nonce, &ct, &tag).unwrap();
+        let (ct, tag) = seal(CryptoId::ChaCha20Poly1305, &key, &nonce, b"h", b"dispatch");
+        let got = open(CryptoId::ChaCha20Poly1305, &key, &nonce, b"h", &ct, &tag).unwrap();
         assert_eq!(got, b"dispatch");
     }
 
@@ -94,8 +99,8 @@ mod tests {
     fn aes_dispatch_roundtrip() {
         let key = [7u8; 32];
         let nonce = [8u8; 12];
-        let (ct, tag) = seal(CryptoId::Aes256Gcm, &key, &nonce, b"dispatch-aes");
-        let got = open(CryptoId::Aes256Gcm, &key, &nonce, &ct, &tag).unwrap();
+        let (ct, tag) = seal(CryptoId::Aes256Gcm, &key, &nonce, b"h", b"dispatch-aes");
+        let got = open(CryptoId::Aes256Gcm, &key, &nonce, b"h", &ct, &tag).unwrap();
         assert_eq!(got, b"dispatch-aes");
     }
 
@@ -103,9 +108,9 @@ mod tests {
     fn open_unknown_crypto_errors() {
         let key = [1u8; 32];
         let nonce = [2u8; 12];
-        let (ct, tag) = seal(CryptoId::ChaCha20Poly1305, &key, &nonce, b"x");
+        let (ct, tag) = seal(CryptoId::ChaCha20Poly1305, &key, &nonce, b"", b"x");
         assert_eq!(
-            open(CryptoId::None, &key, &nonce, &ct, &tag),
+            open(CryptoId::None, &key, &nonce, b"", &ct, &tag),
             Err(embark_format::Error::UnknownCrypto(0))
         );
     }

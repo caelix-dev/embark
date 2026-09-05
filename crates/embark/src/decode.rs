@@ -20,10 +20,15 @@ pub(crate) fn decode(entry: &'static [u8], key: Option<[u8; 32]>) -> Result<Cow<
                 let key = key.ok_or(Error::Auth)?;
                 let nonce = header.nonce.ok_or(Error::Corrupt)?;
                 let tag = header.tag.ok_or(Error::Corrupt)?;
+                // The header rides along as associated data, so a codec, a
+                // cipher or a length rewritten under this tag fails here as
+                // `Auth` rather than reaching a decoder it was never meant
+                // for.
                 Cow::Owned(embark_crypt::open(
                     header.crypto,
                     &key,
                     &nonce,
+                    &entry[..header.aad_len],
                     payload,
                     &tag,
                 )?)
