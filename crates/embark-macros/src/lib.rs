@@ -270,6 +270,14 @@ fn expand_crypt(parsed: crypt_args::CryptArgs) -> syn::Result<proc_macro2::Token
 ///   build is not served until the crate rebuilds, and one that `exclude`
 ///   left out is never served. This is what keeps a development server
 ///   that hands out assets by request path from handing out `../.env`.
+/// - `follow_links` — follow symbolic links (and, on Windows, junctions)
+///   found inside the folder. Off by default, and a link met without it is
+///   a build error rather than a skipped file: a link can point anywhere
+///   on the build machine, and following one that points at a key or a
+///   credential file embeds that file into the binary. That is a plausible
+///   shape for an accident and a very plausible shape for a hostile pull
+///   request. With it on, each real directory is walked once, so a link
+///   back to an ancestor ends the walk instead of never ending it.
 /// - `include = "..."` / `exclude = "..."` — glob filters over each file's
 ///   path relative to `folder`; repeatable (each occurrence adds one
 ///   pattern). A file is embedded when it matches no `exclude` pattern and

@@ -2,6 +2,7 @@ use crate::args::{CodecArg, parse_codec};
 use crate::{build, crypt, glob};
 use embark_format::{CodecId, CryptoId};
 use quote::quote;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use syn::LitStr;
 use syn::spanned::Spanned;
@@ -14,6 +15,9 @@ struct Config {
     cipher: CryptoId,
     encrypt: bool,
     dev: bool,
+    // Off unless asked for. A link inside the folder can point anywhere on
+    // the build machine, and following it embeds whatever is there.
+    follow_links: bool,
     include: Vec<String>,
     exclude: Vec<String>,
 }
@@ -29,7 +33,13 @@ pub(crate) fn expand(input: &syn::DeriveInput) -> syn::Result<proc_macro2::Token
 
     // Walk the folder, collect (relative_path, absolute_path), apply globs.
     let mut files = Vec::new();
-    walk(&folder_abs, &folder_abs, &cfg, &mut files)?;
+    walk(
+        &folder_abs,
+        &folder_abs,
+        &cfg,
+        &mut HashSet::new(),
+        &mut files,
+    )?;
     files.sort();
 
     // One build-time key per derive when encrypting.
@@ -199,8 +209,19 @@ fn walk(
     root: &Path,
     dir: &Path,
     cfg: &Config,
+    seen: &mut HashSet<PathBuf>,
     out: &mut Vec<(String, std::path::PathBuf)>,
 ) -> syn::Result<()> {
+    // A followed link can lead back to a directory already walked, and one
+    // pointing at an ancestor would do so without end. Each real directory
+    // is walked once, the root included, so a link back to it is simply a
+    // directory already seen.
+    if cfg.follow_links {
+        let real = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+        if !seen.insert(real) {
+            return Ok(());
+        }
+    }
     // A directory that cannot be listed would otherwise drop every file under
     // it from the manifest without a word, so report it instead.
     let rd = std::fs::read_dir(dir).map_err(|e| {
@@ -218,8 +239,23 @@ fn walk(
     })?;
     for entry in rd.flatten() {
         let path = entry.path();
+        // What the entry *is*, from the listing, before anything follows it
+        // to what it points at.
+        let is_link = entry.file_type().is_ok_and(|kind| kind.is_symlink());
+        if is_link && !cfg.follow_links {
+            let shown = shown_child(cfg, &relative_to(root, &path));
+            return Err(syn::Error::new(
+                cfg.folder.span(),
+                format!(
+                    "embark: `{shown}` is a symbolic link, and links are not followed: one \
+                     pointing outside the folder would embed its target -- a key, a \
+                     credential file -- into the binary. Add `follow_links` to \
+                     `#[embark(...)]` to follow links, or replace it with the file itself."
+                ),
+            ));
+        }
         if path.is_dir() {
-            walk(root, &path, cfg, out)?;
+            walk(root, &path, cfg, seen, out)?;
         } else {
             let rel = relative_to(root, &path);
             if included(cfg, &rel) {
@@ -262,6 +298,7 @@ fn parse_config(input: &syn::DeriveInput) -> syn::Result<Config> {
     let mut cipher = CryptoId::ChaCha20Poly1305;
     let mut encrypt = false;
     let mut dev = false;
+    let mut follow_links = false;
     let mut include = Vec::new();
     let mut exclude = Vec::new();
 
@@ -295,6 +332,8 @@ fn parse_config(input: &syn::DeriveInput) -> syn::Result<Config> {
                 encrypt = true;
             } else if meta.path.is_ident("dev") {
                 dev = true;
+            } else if meta.path.is_ident("follow_links") {
+                follow_links = true;
             } else if meta.path.is_ident("include") {
                 let s: syn::LitStr = meta.value()?.parse()?;
                 include.push(s.value());
@@ -321,7 +360,108 @@ fn parse_config(input: &syn::DeriveInput) -> syn::Result<Config> {
         cipher,
         encrypt,
         dev,
+        follow_links,
         include,
         exclude,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn config(follow_links: bool) -> Config {
+        Config {
+            folder: LitStr::new("assets", proc_macro2::Span::call_site()),
+            codec: CodecArg::Fixed(CodecId::Store),
+            cipher: CryptoId::ChaCha20Poly1305,
+            encrypt: false,
+            dev: false,
+            follow_links,
+            include: Vec::new(),
+            exclude: Vec::new(),
+        }
+    }
+
+    /// A fresh scratch tree: `assets/ok.txt`, and `outside.txt` next to the
+    /// folder so a link can point out of it.
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("embark-walk-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("assets")).unwrap();
+        fs::write(dir.join("assets/ok.txt"), b"ok").unwrap();
+        fs::write(dir.join("outside.txt"), b"not an asset").unwrap();
+        dir
+    }
+
+    /// Creating a link needs a privilege on Windows that a plain user does
+    /// not have. `None` means the test cannot run here, not that it failed.
+    fn link(target: &Path, at: &Path, is_dir: bool) -> Option<()> {
+        #[cfg(unix)]
+        {
+            let _ = is_dir;
+            std::os::unix::fs::symlink(target, at).ok()
+        }
+        #[cfg(windows)]
+        {
+            if is_dir {
+                std::os::windows::fs::symlink_dir(target, at).ok()
+            } else {
+                std::os::windows::fs::symlink_file(target, at).ok()
+            }
+        }
+    }
+
+    fn names(dir: &Path, follow_links: bool) -> syn::Result<Vec<String>> {
+        let root = dir.join("assets");
+        let mut out = Vec::new();
+        walk(
+            &root,
+            &root,
+            &config(follow_links),
+            &mut HashSet::new(),
+            &mut out,
+        )?;
+        Ok(out.into_iter().map(|(rel, _)| rel).collect())
+    }
+
+    #[test]
+    fn a_link_out_of_the_folder_is_refused_unless_asked_for() {
+        let dir = scratch("out");
+        if link(
+            &dir.join("outside.txt"),
+            &dir.join("assets/leak.txt"),
+            false,
+        )
+        .is_none()
+        {
+            return;
+        }
+        let err = names(&dir, false).expect_err("a link must not be followed by default");
+        let msg = err.to_string();
+        assert!(msg.contains("leak.txt"), "{msg}");
+        assert!(msg.contains("follow_links"), "{msg}");
+
+        let followed = names(&dir, true).unwrap();
+        assert!(followed.contains(&"leak.txt".to_string()), "{followed:?}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_link_back_to_an_ancestor_ends_the_walk_instead_of_never_ending_it() {
+        let dir = scratch("loop");
+        if link(&dir.join("assets"), &dir.join("assets/again"), true).is_none() {
+            return;
+        }
+        let followed = names(&dir, true).unwrap();
+        // The real directory is walked once, so its one file appears once,
+        // under the name it was reached by first.
+        assert_eq!(
+            followed.iter().filter(|n| n.ends_with("ok.txt")).count(),
+            1,
+            "{followed:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
