@@ -19,7 +19,10 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 embark-format.workspace = true
-chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc"] }
+# `zeroize` became optional in 0.11. Without it the cipher keeps its copy
+# of the key until the memory is reused; with it the copy is wiped on drop,
+# the same guarantee `aes-gcm` and `aes` are held to below.
+chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc", "zeroize"] }
 aes-gcm = { version = "0.11", default-features = false, features = ["alloc", "aes", "zeroize"], optional = true }
 # Not named in the source: pulled in only to turn on `aes/zeroize`, which
 # wipes the AES round-key schedule on drop. The first eight words of an
