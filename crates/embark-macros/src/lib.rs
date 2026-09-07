@@ -166,6 +166,13 @@ fn expand_bytes(args: args::Args) -> syn::Result<proc_macro2::TokenStream> {
 ///   default, which uses the build-time embedded-key mode
 ///   (**obfuscation, not security** — see `EncryptedFile`'s docs for what
 ///   that means and why).
+///
+///   Cargo does not know this expansion reads `EMBARK_KEY`, so changing the
+///   key and rebuilding with no source change leaves the entry sealed under
+///   the old one, silently. Put
+///   `println!("cargo:rerun-if-env-changed=EMBARK_KEY");` in the embedding
+///   crate's `build.rs` and a key change re-seals it. A proc macro cannot
+///   register that dependency itself on stable Rust.
 #[proc_macro]
 pub fn embed_crypt(input: TokenStream) -> TokenStream {
     let parsed = syn::parse_macro_input!(input as crypt_args::CryptArgs);

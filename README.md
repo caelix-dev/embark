@@ -199,6 +199,32 @@ Build it with the key in the environment, and keep that key — it is the one
 EMBARK_KEY=$(openssl rand -hex 32) cargo build --release
 ```
 
+**Rotating the key needs one more line, or the rotation does not happen.**
+Cargo does not know the build depends on `EMBARK_KEY`: change it and build
+again with no source change, and cargo reports the crate up to date and
+hands you the binary sealed under the *old* key. Nothing warns. If the old
+key leaked and the rotation was the response, the "rotated" binary still
+opens with it. Tell cargo about the dependency from a `build.rs` in the
+crate that does the embedding:
+
+```rust
+fn main() {
+    println!("cargo:rerun-if-env-changed=EMBARK_KEY");
+}
+```
+
+With that in place a changed key re-expands the macro and re-seals every
+entry. A proc macro cannot register the dependency itself on stable Rust,
+which is why this is on you.
+
+**What an encrypted bundle still reveals.** The contents are ciphertext,
+but the manifest is not: every embedded file's *path* is a plain string in
+the binary, and each entry's header carries the plaintext *length* in the
+clear. Someone with the binary and no key learns that it holds
+`prod/db-password-for-payments.txt` and that the password is eight bytes
+long. Name files for what the binary may admit to holding, and pad anything
+whose length is itself a secret.
+
 With `key = runtime` the ciphertext is embedded but no key material at all
 is compiled in; the caller supplies the key at run time (e.g. from an
 environment variable, a secrets manager, or a hardware token), and without
