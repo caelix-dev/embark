@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-09-07
+
+A second pass over the cryptography's surroundings: not the ciphers, but
+what happens to keys around them and what a build does when a key changes.
+
+### Fixed
+
+- **The ChaCha20-Poly1305 cipher kept its copy of the key until the memory
+  was reused.** `chacha20poly1305` 0.11 made wiping on drop an optional
+  feature, and the manifest enabled only `alloc`. It is on now, which holds
+  ChaCha to the guarantee `aes-gcm` and `aes` already had.
+
+### Documentation
+
+- **Rotating `EMBARK_KEY` does not rebuild anything on its own.** Cargo does
+  not know the build reads the variable: change it, build again with no
+  source change, and cargo reports the crate up to date and hands back the
+  binary sealed under the old key, with no warning. Reproduced, then fixed
+  with the standard remedy -- `cargo:rerun-if-env-changed=EMBARK_KEY` from a
+  `build.rs` in the embedding crate, which a proc macro cannot emit for you
+  on stable Rust. The README's runtime-key section and `embed_crypt!`'s docs
+  now say so.
+- **An encrypted bundle still reveals its file names and plaintext sizes.**
+  The manifest's paths are plain strings in the binary and each header
+  carries the original length in the clear; only the contents are
+  ciphertext. Verified against a release binary. Documented in the README's
+  security note, with the advice that follows from it.
+
+Checked and found sound: `metadata`'s `hash()` is computed at runtime from
+the decrypted bytes, not embedded, so it exposes nothing about an encrypted
+file; `Debug` for `EncryptedFile` prints neither the key routine nor the
+entry; `aes-gcm`'s `zeroize` covers its key and the GHASH key.
+
 ## [0.2.0] - 2026-09-05
 
 A hardening release. Each item was found by trying the attack rather than
