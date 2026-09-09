@@ -56,13 +56,16 @@
 //!   and does nothing, so manifests that name it keep resolving.
 //! - `derive` — the `embed_bytes!`, `embed_crypt!`, and `#[derive(Embed)]`
 //!   macros (via `embark-macros`).
-//! - `deflate`, `lz4`, `snappy` — compression codecs (opt-in, pay for what
-//!   you use).
+//! - `deflate`, `lz4`, `snappy`, `zstd`, `lzma` — compression codecs
+//!   (opt-in, pay for what you use). `deflate` is on by default.
 //! - `encryption` — ChaCha20-Poly1305 AEAD support ([`EncryptedFile`]).
 //! - `aes` — adds AES-256-GCM as a second AEAD cipher, selected per entry
 //!   with `embed_crypt!(..., cipher = aes)` or `#[embark(encrypt, cipher =
 //!   "aes")]` (implies `encryption`).
 //! - `metadata` — per-file [`EmbeddedFile::hash`] and [`EmbeddedFile::mime`].
+//! - `parallel-encode` — lets the macros compress with more than one thread
+//!   at build time. On by default; it never reaches the shipped binary. Set
+//!   `EMBARK_ENCODE_THREADS=1` to turn it off for one build.
 // docs.rs builds with `--cfg docsrs` (see each manifest's
 // `[package.metadata.docs.rs]`), which turns this on and makes rustdoc label
 // every item with the feature that gates it. Nearly all of this API is
@@ -113,10 +116,3 @@ pub use embark_crypt::{Aead, ChaCha20Poly1305};
 
 #[cfg(feature = "derive")]
 pub use embark_macros::{Embed, embed_bytes, embed_crypt};
-
-#[cfg(feature = "metadata")]
-#[doc(hidden)]
-#[must_use]
-pub fn __sha256_for_test(d: &[u8]) -> [u8; 32] {
-    meta::sha256(d)
-}
