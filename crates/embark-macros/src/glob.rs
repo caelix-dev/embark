@@ -21,7 +21,10 @@ pub(crate) fn matches(pattern: &str, name: &str) -> bool {
     // leaves a match attempt in the middle of one.
     fn width(lead: u8) -> usize {
         match lead {
-            0x00..=0x7f => 1,
+            // ASCII, or a continuation byte -- which a position kept on
+            // character boundaries never lands on, and which is safest
+            // stepped over one at a time if it ever did.
+            0x00..=0xbf => 1,
             0xc0..=0xdf => 2,
             0xe0..=0xef => 3,
             _ => 4,
