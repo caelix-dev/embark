@@ -148,6 +148,10 @@ mod tests {
         assert_eq!(h.crypto, CryptoId::None);
         assert_eq!(h.orig_len, 3);
         assert!(h.nonce.is_none());
+        // Tag byte plus a one-byte varint, and nothing between that and the
+        // payload for a plain entry.
+        assert_eq!(h.aad_len, 2);
+        assert_eq!(h.payload_offset, h.aad_len);
         assert_eq!(&buf[h.payload_offset..], &[1, 2, 3]);
     }
 
@@ -170,6 +174,18 @@ mod tests {
         assert_eq!(h.orig_len, 100);
         assert_eq!(h.nonce, Some(nonce));
         assert_eq!(h.tag, Some(tag));
+        // The associated data stops before the nonce and tag: they are
+        // what the cipher writes and checks, not what it is told.
+        assert_eq!(h.aad_len, 2);
+        assert_eq!(h.payload_offset, h.aad_len + 12 + 16);
+        let mut header = Vec::new();
+        write_header(
+            &mut header,
+            CodecId::Deflate,
+            CryptoId::ChaCha20Poly1305,
+            100,
+        );
+        assert_eq!(header, &buf[..h.aad_len]);
         assert_eq!(&buf[h.payload_offset..], &[0xAA, 0xBB]);
     }
 
