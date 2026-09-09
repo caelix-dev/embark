@@ -34,7 +34,10 @@ pub fn write_varint(out: &mut alloc::vec::Vec<u8>, mut value: u64) {
 pub fn read_varint(input: &[u8]) -> crate::Result<(u64, usize)> {
     let mut value: u64 = 0;
     for (i, &byte) in input.iter().enumerate() {
-        if i == 10 {
+        // Nine bytes carry 63 bits; the tenth has room for one more, and
+        // anything above it would be shifted off the end. A byte that sets
+        // those bits is not an encoding of any `u64`.
+        if i == 10 || (i == 9 && byte & 0x7e != 0) {
             return Err(crate::Error::Corrupt);
         }
         value |= u64::from(byte & 0x7f) << (7 * i);
@@ -71,5 +74,23 @@ mod tests {
     #[test]
     fn truncated_is_error() {
         assert!(matches!(read_varint(&[0x80]), Err(crate::Error::Truncated)));
+    }
+
+    // Ten bytes is the most a `u64` takes, and the tenth holds one bit. A
+    // tenth byte with more set, or an eleventh byte at all, describes a
+    // value wider than the type, not a `u64` written the long way.
+    #[test]
+    fn bits_past_the_sixty_fourth_are_corrupt() {
+        let mut max = [0xffu8; 10];
+        max[9] = 0x01;
+        assert_eq!(read_varint(&max), Ok((u64::MAX, 10)));
+
+        let mut over = max;
+        over[9] = 0x02;
+        assert!(matches!(read_varint(&over), Err(crate::Error::Corrupt)));
+
+        let mut long = [0xffu8; 11];
+        long[10] = 0x00;
+        assert!(matches!(read_varint(&long), Err(crate::Error::Corrupt)));
     }
 }
