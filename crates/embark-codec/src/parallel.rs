@@ -76,6 +76,17 @@ mod imp {
         (index < len).then_some(index)
     }
 
+    /// Workers on loan from the budget, handed back when this drops -- on
+    /// the way out of a panic as much as on the way out of `map`, so a
+    /// caller that catches one does not find the budget short forever.
+    struct Loan(usize);
+
+    impl Drop for Loan {
+        fn drop(&mut self) {
+            spare().fetch_add(self.0, Ordering::Relaxed);
+        }
+    }
+
     /// Apply `f` to every item, in parallel where the budget allows.
     ///
     /// Without the `parallel-encode` feature this is `items.iter().map(f)`
@@ -107,6 +118,7 @@ mod imp {
         if extra == 0 {
             return items.iter().map(f).collect();
         }
+        let loan = Loan(extra);
 
         let next = AtomicUsize::new(0);
         let (tx, rx) = mpsc::channel();
@@ -130,7 +142,7 @@ mod imp {
             }
             drop(tx);
         });
-        spare().fetch_add(extra, Ordering::Relaxed);
+        drop(loan);
 
         let mut slots: Vec<Option<R>> = (0..len).map(|_| None).collect();
         for (index, value) in rx {
