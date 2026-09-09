@@ -19,7 +19,9 @@ fn put_uvarint(out: &mut Vec<u8>, mut v: u32) {
 fn read_uvarint(input: &[u8]) -> Result<(u32, usize), Error> {
     let mut value: u32 = 0;
     for (i, &b) in input.iter().enumerate() {
-        if i == 5 {
+        // Four bytes carry 28 bits and the fifth has room for four more;
+        // anything above that would be shifted off the end of the `u32`.
+        if i == 5 || (i == 4 && b & 0x70 != 0) {
             return Err(Error::Corrupt);
         }
         value |= u32::from(b & 0x7f) << (7 * i);
@@ -257,6 +259,24 @@ mod tests {
     #[test]
     fn truncated_is_error() {
         assert!(decompress(&[0x04, 0xff], 4).is_err());
+    }
+
+    // A preamble that sets bits above the 32nd is not a length at all, so
+    // it is refused rather than read with those bits dropped.
+    #[test]
+    fn preamble_bits_past_the_thirty_second_are_corrupt() {
+        assert_eq!(
+            read_uvarint(&[0xff, 0xff, 0xff, 0xff, 0x0f]),
+            Ok((u32::MAX, 5))
+        );
+        assert_eq!(
+            read_uvarint(&[0xff, 0xff, 0xff, 0xff, 0x1f]),
+            Err(Error::Corrupt)
+        );
+        assert_eq!(
+            read_uvarint(&[0xff, 0xff, 0xff, 0xff, 0xff, 0x00]),
+            Err(Error::Corrupt)
+        );
     }
 
     #[test]
