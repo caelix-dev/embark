@@ -37,7 +37,12 @@ pub(crate) fn decompress(input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error
         .map_err(|_| Error::Corrupt)?;
     out.resize(orig_len, 0u8);
     let written = lz4_flex::block::decompress_into(input, &mut out).map_err(|_| Error::Corrupt)?;
-    out.truncate(written);
+    // The sink is exactly `orig_len` wide, so a block that wants more than
+    // that fails inside `decompress_into`. One that wants less returns
+    // early with the count, and is just as much of a length disagreement.
+    if written != orig_len {
+        return Err(Error::Corrupt);
+    }
     Ok(out)
 }
 
@@ -58,10 +63,16 @@ mod tests {
         assert_eq!(decompress(&c, 0).unwrap(), b"");
     }
 
+    // Both directions. A claim smaller than the block fails inside the
+    // decoder when the sink runs out; a claim larger than it used to come
+    // back as `Ok` with the shorter output, which the fuzzer found within
+    // its first few inputs.
     #[test]
     fn wrong_len_is_corrupt() {
         let c = compress(b"hello world");
-        assert!(decompress(&c, 3).is_err());
+        assert_eq!(decompress(&c, 3), Err(Error::Corrupt));
+        assert_eq!(decompress(&c, 12), Err(Error::Corrupt));
+        assert_eq!(decompress(&c, 100), Err(Error::Corrupt));
     }
 
     #[test]
