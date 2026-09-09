@@ -3,10 +3,8 @@ use embark_format::Error;
 extern crate alloc;
 use alloc::vec::Vec;
 
-#[cfg(feature = "dec")]
-use chacha20poly1305::Tag;
+use chacha20poly1305::ChaCha20Poly1305;
 use chacha20poly1305::aead::{AeadInOut, KeyInit};
-use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 
 #[cfg(feature = "enc")]
 pub(crate) fn seal(
@@ -15,10 +13,13 @@ pub(crate) fn seal(
     aad: &[u8],
     plain: &[u8],
 ) -> (Vec<u8>, [u8; 16]) {
-    let cipher = ChaCha20Poly1305::new(&Key::from(*key));
+    // The cipher is handed a reference to the caller's key, not a copy:
+    // it wipes its own schedule on drop, and the caller wipes its array,
+    // which leaves no third copy on this frame for neither to reach.
+    let cipher = ChaCha20Poly1305::new(key.into());
     let mut buf = plain.to_vec();
     let tag = cipher
-        .encrypt_inout_detached(&Nonce::from(*nonce), aad, buf.as_mut_slice().into())
+        .encrypt_inout_detached(nonce.into(), aad, buf.as_mut_slice().into())
         .expect("embark-crypt: plaintext exceeds the 256 GiB ChaCha20-Poly1305 message limit");
     (buf, tag.into())
 }
@@ -31,15 +32,10 @@ pub(crate) fn open(
     ct: &[u8],
     tag: &[u8; 16],
 ) -> Result<Vec<u8>, Error> {
-    let cipher = ChaCha20Poly1305::new(&Key::from(*key));
+    let cipher = ChaCha20Poly1305::new(key.into());
     let mut buf = ct.to_vec();
     cipher
-        .decrypt_inout_detached(
-            &Nonce::from(*nonce),
-            aad,
-            buf.as_mut_slice().into(),
-            &Tag::from(*tag),
-        )
+        .decrypt_inout_detached(nonce.into(), aad, buf.as_mut_slice().into(), tag.into())
         .map_err(|_| Error::Auth)?;
     Ok(buf)
 }
