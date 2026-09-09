@@ -94,6 +94,7 @@ pub struct EmbeddedFile {
     path: Cow<'static, str>,
     // For an encrypted entry, the per-build-randomized reconstruction function
     // that rebuilds the shared build-time key; `None` for plain entries.
+    #[cfg(feature = "encryption")]
     recon: Option<fn() -> [u8; 32]>,
 }
 
@@ -146,10 +147,17 @@ impl EmbeddedFile {
     /// happen, which is why [`data`](EmbeddedFile::data) exists.
     pub fn try_data(&self) -> Result<Cow<'static, [u8]>> {
         match &self.source {
+            #[cfg(feature = "encryption")]
             Source::Static(entry) => {
-                let key = self.recon.map(|recon| recon());
-                crate::decode::decode(entry, key)
+                // The rebuilt key lives for this call and is wiped when it
+                // ends, rather than left behind on the stack.
+                let key = self
+                    .recon
+                    .map(|recon| embark_crypt::Zeroizing::new(recon()));
+                crate::decode::decode(entry, key.as_deref())
             }
+            #[cfg(not(feature = "encryption"))]
+            Source::Static(entry) => crate::decode::decode(entry, None),
             #[cfg(feature = "std")]
             Source::Owned(bytes) => Ok(Cow::Owned(bytes.clone())),
         }
@@ -238,6 +246,7 @@ pub fn lookup(manifest: &'static [Manifest], path: &str) -> Option<EmbeddedFile>
     Some(EmbeddedFile {
         source: Source::Static(m.entry),
         path: Cow::Borrowed(m.path),
+        #[cfg(feature = "encryption")]
         recon: None,
     })
 }
@@ -313,6 +322,7 @@ pub fn __dev_file(
     Some(EmbeddedFile {
         source: Source::Owned(bytes),
         path: Cow::Owned(path.to_string()),
+        #[cfg(feature = "encryption")]
         recon: None,
     })
 }

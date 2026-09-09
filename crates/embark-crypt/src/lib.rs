@@ -59,3 +59,11 @@ mod keygen;
 #[cfg(feature = "enc")]
 pub use keygen::gen_key_nonce;
 pub use keygen::xor32;
+
+/// A wrapper that wipes its contents on drop, from the `zeroize` crate.
+///
+/// Re-exported so a caller holding a key only for the length of one
+/// [`open`] call can keep it in one of these without naming `zeroize` in
+/// its own manifest. [`gen_key_nonce`] and [`xor32`] hand back plain arrays
+/// for the reasons their docs give; this is the wrapper to put those in.
+pub use zeroize::Zeroizing;

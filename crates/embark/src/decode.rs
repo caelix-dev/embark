@@ -2,7 +2,9 @@ use alloc::borrow::Cow;
 use alloc::vec::Vec;
 use embark_format::{CodecId, CryptoId, Error, Result, read_header};
 
-pub(crate) fn decode(entry: &'static [u8], key: Option<[u8; 32]>) -> Result<Cow<'static, [u8]>> {
+// `key` is borrowed rather than taken by value so that the only copy of it
+// is the one the caller holds, and can wipe.
+pub(crate) fn decode(entry: &'static [u8], key: Option<&[u8; 32]>) -> Result<Cow<'static, [u8]>> {
     let header = read_header(entry)?;
     let payload = &entry[header.payload_offset..];
 
@@ -26,7 +28,7 @@ pub(crate) fn decode(entry: &'static [u8], key: Option<[u8; 32]>) -> Result<Cow<
                 // for.
                 Cow::Owned(embark_crypt::open(
                     header.crypto,
-                    &key,
+                    key,
                     &nonce,
                     &entry[..header.aad_len],
                     payload,

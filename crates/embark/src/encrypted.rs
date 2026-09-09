@@ -1,5 +1,6 @@
 use alloc::string::String;
 use alloc::vec::Vec;
+use embark_crypt::Zeroizing;
 use embark_format::{Error, Result};
 
 /// Type-state marker selecting [`EncryptedFile`]'s build-time
@@ -207,8 +208,8 @@ impl EncryptedFile<EmbeddedKey> {
     /// not something a caller can trigger at runtime.
     #[must_use]
     pub fn decrypt(&self) -> Vec<u8> {
-        let key = (self.key)();
-        crate::decode::decode(self.entry, Some(key))
+        let key = Zeroizing::new((self.key)());
+        crate::decode::decode(self.entry, Some(&key))
             .expect("embark: embedded entry is malformed (this is a build-time bug)")
             .into_owned()
     }
@@ -223,8 +224,8 @@ impl EncryptedFile<EmbeddedKey> {
     /// decrypted content is not UTF-8. Decryption itself cannot fail here,
     /// for the reason [`decrypt`](EncryptedFile::decrypt) gives.
     pub fn decrypt_str(&self) -> Result<String> {
-        let key = (self.key)();
-        let bytes = crate::decode::decode(self.entry, Some(key))?.into_owned();
+        let key = Zeroizing::new((self.key)());
+        let bytes = crate::decode::decode(self.entry, Some(&key))?.into_owned();
         String::from_utf8(bytes).map_err(|e| Error::Utf8 {
             valid_up_to: e.utf8_error().valid_up_to(),
         })
@@ -263,6 +264,6 @@ impl EncryptedFile<RuntimeKey> {
     /// [`Error::Corrupt`] or [`Error::Truncated`] if the compiled-in entry is
     /// damaged.
     pub fn decrypt_with(&self, key: &[u8; 32]) -> Result<Vec<u8>> {
-        Ok(crate::decode::decode(self.entry, Some(*key))?.into_owned())
+        Ok(crate::decode::decode(self.entry, Some(key))?.into_owned())
     }
 }
