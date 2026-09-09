@@ -15,56 +15,80 @@
 ///   segments, so `**/*.png` finds a `.png` at any depth, `a/**/b` matches
 ///   `a/b` as well as `a/x/y/b`, and `a/**` matches everything under `a`.
 ///   Elsewhere it is simply a `*` that may cross `/`.
+///
+/// Matching is a table over pattern position and name position, filled
+/// from the end, so it costs pattern length times name length however the
+/// wildcards are arranged. A backtracking matcher takes exponential time
+/// on a run of them, and this one runs at build time on whatever pattern a
+/// developer wrote.
 pub(crate) fn matches(pattern: &str, name: &str) -> bool {
-    // Both sides are UTF-8, and every step below moves the name forward by
-    // one whole character, so `?` counts characters and a wildcard never
-    // leaves a match attempt in the middle of one.
-    fn width(lead: u8) -> usize {
-        match lead {
-            // ASCII, or a continuation byte -- which a position kept on
-            // character boundaries never lands on, and which is safest
-            // stepped over one at a time if it ever did.
-            0x00..=0xbf => 1,
-            0xc0..=0xdf => 2,
-            0xe0..=0xef => 3,
-            _ => 4,
+    let tokens = tokenize(pattern);
+    let name: Vec<char> = name.chars().collect();
+
+    // `next[j]`: does the pattern after the current token match `name[j..]`.
+    // `here[j]`: the same for the pattern from the current token on.
+    let mut next = vec![false; name.len() + 1];
+    next[name.len()] = true;
+    let mut here = vec![false; name.len() + 1];
+
+    for token in tokens.iter().rev() {
+        // Whether some `/` at or after `j` lets `**/` resume there.
+        let mut segment_from_later = false;
+        for j in (0..=name.len()).rev() {
+            let c = name.get(j).copied();
+            here[j] = match token {
+                Token::Literal(want) => c == Some(*want) && next[j + 1],
+                Token::One => c.is_some_and(|c| c != '/') && next[j + 1],
+                // Any run of characters inside one segment.
+                Token::Star => next[j] || (c.is_some_and(|c| c != '/') && here[j + 1]),
+                // Any run at all, `/` included.
+                Token::Cross => next[j] || (c.is_some() && here[j + 1]),
+                // Any number of whole segments, zero among them: either the
+                // rest matches from here, or it matches from just after
+                // some later `/`.
+                Token::Segments => next[j] || segment_from_later,
+            };
+            if c == Some('/') {
+                segment_from_later |= here[j + 1];
+            }
         }
+        core::mem::swap(&mut here, &mut next);
     }
-    fn rec(p: &[u8], n: &[u8]) -> bool {
-        match p.first() {
-            None => n.is_empty(),
-            Some(b'*') if p.get(1) == Some(&b'*') => {
-                let rest = &p[2..];
-                match rest.first() {
-                    // A trailing `**` takes whatever is left, `/` included.
-                    None => true,
-                    // `**/` stands for any number of whole segments, zero
-                    // among them: that is what lets `**/x` match a top-level
-                    // `x` as well as `a/b/x`.
-                    Some(b'/') => {
-                        if rec(&rest[1..], n) {
-                            return true;
-                        }
-                        n.iter()
-                            .enumerate()
-                            .any(|(at, &c)| c == b'/' && rec(p, &n[at + 1..]))
-                    }
-                    // `**` against anything else is a `*` that may cross `/`.
-                    _ => rec(rest, n) || n.first().is_some_and(|&c| rec(p, &n[width(c)..])),
+    next[0]
+}
+
+enum Token {
+    Literal(char),
+    /// `?`
+    One,
+    /// `*`
+    Star,
+    /// `**` somewhere other than as a whole segment.
+    Cross,
+    /// `**/`
+    Segments,
+}
+
+fn tokenize(pattern: &str) -> Vec<Token> {
+    let mut tokens = Vec::new();
+    let mut chars = pattern.chars().peekable();
+    while let Some(c) = chars.next() {
+        tokens.push(match c {
+            '*' if chars.peek() == Some(&'*') => {
+                chars.next();
+                if chars.peek() == Some(&'/') {
+                    chars.next();
+                    Token::Segments
+                } else {
+                    Token::Cross
                 }
             }
-            Some(b'*') => {
-                rec(&p[1..], n)
-                    || n.first()
-                        .is_some_and(|&c| c != b'/' && rec(p, &n[width(c)..]))
-            }
-            Some(b'?') => n
-                .first()
-                .is_some_and(|&c| c != b'/' && rec(&p[1..], &n[width(c)..])),
-            Some(&c) => !n.is_empty() && n[0] == c && rec(&p[1..], &n[1..]),
-        }
+            '*' => Token::Star,
+            '?' => Token::One,
+            c => Token::Literal(c),
+        });
     }
-    rec(pattern.as_bytes(), name.as_bytes())
+    tokens
 }
 
 #[cfg(test)]
@@ -136,6 +160,20 @@ mod tests {
         assert!(matches("a**z", "ab/cz"));
         // Whereas a single one does not.
         assert!(!matches("a*z", "ab/cz"));
+    }
+
+    // The fuzzer's first find: a run of stars against a name that does not
+    // match sent the old backtracking matcher into exponential time. This
+    // has to come back, false, in well under a second.
+    #[test]
+    fn a_run_of_wildcards_does_not_take_exponential_time() {
+        let pattern = "*".repeat(40) + "x";
+        let name = "a".repeat(60);
+        assert!(!matches(&pattern, &name));
+        let pattern = "**/".repeat(20) + "?*x";
+        let name = "a/".repeat(30) + "b";
+        assert!(!matches(&pattern, &name));
+        assert!(matches(&("*".repeat(40) + "x"), &("a".repeat(60) + "x")));
     }
 
     #[test]
