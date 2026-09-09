@@ -153,10 +153,10 @@ fn expand_bytes(args: args::Args) -> syn::Result<proc_macro2::TokenStream> {
 ///   to build.
 /// - `cipher = <ident>` — the AEAD cipher to seal with: `chacha`
 ///   (ChaCha20-Poly1305, the default) or `aes` (AES-256-GCM). Both share
-///   the same key/nonce/tag shape and threat model — see the module docs'
-///   security note. `cipher = aes` requires the `aes` feature enabled on
-///   `embark`; naming it without that feature is a build error, not a
-///   silent fallback (unlike an unavailable codec).
+///   the same key/nonce/tag shape and threat model — see `EncryptedFile`'s
+///   docs. `cipher = aes` requires the `aes` feature enabled on `embark`;
+///   naming it without that feature is a build error, not a silent
+///   fallback (unlike an unavailable codec).
 /// - `key = runtime` — opt into the runtime-key mode: no key material is
 ///   embedded, and the resulting handle (an `EncryptedFile<RuntimeKey>`)
 ///   must be decrypted with `decrypt_with(&key)` -- it has no `decrypt()`
@@ -263,13 +263,16 @@ fn expand_crypt(parsed: crypt_args::CryptArgs) -> syn::Result<proc_macro2::Token
 ///   files.
 /// - `cipher = "..."` — the AEAD cipher `encrypt` seals with: `"chacha"`
 ///   (ChaCha20-Poly1305, the default) or `"aes"` (AES-256-GCM). Ignored
-///   without `encrypt`. Both share the same threat model -- see the
-///   module docs' security note. `cipher = "aes"` requires the `aes`
-///   feature enabled on `embark`; naming it without that feature is a
-///   build error.
+///   without `encrypt`. Both share the same threat model -- see
+///   `EncryptedFile`'s docs. `cipher = "aes"` requires the `aes` feature
+///   enabled on `embark`; naming it without that feature is a build error.
 /// - `dev` — in debug builds only, `get()` reads the file live from disk
 ///   (relative to `folder`) instead of returning the compiled-in copy, for
 ///   fast iteration without rebuilding. Has no effect in release builds.
+///
+///   Combined with `encrypt`, a debug build serves the file as it is on
+///   disk, in the clear: the copy there was never sealed, and this mode is
+///   for a developer's own machine. The release build is unaffected.
 ///
 ///   It serves the files the derive embedded and nothing else: a path has
 ///   to be one the manifest holds, exactly, or `get()` returns `None` just
