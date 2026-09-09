@@ -20,9 +20,29 @@ argument they were not expecting.
   `decrypt_str` already gave the embedded-key mode.
 - `embark_crypt::Zeroizing`, re-exported from `zeroize`, for a caller that
   holds a key only as long as one `open` call.
+- `EncryptedFile<EmbeddedKey>::try_decrypt`, the fallible form of
+  `decrypt`, matching `try_data` on the other handles. `Debug` on an
+  encrypted handle now reports the file's size, as the plain ones do.
+- Fuzz targets under `fuzz/`, for every decoder against arbitrary
+  entries, every encoder's round trip, and the glob matcher. CI runs each
+  for a minute; the two fixes below are what the first minutes found.
 
 ### Fixed
 
+- **An LZ4 block that decoded to fewer bytes than the header claimed was
+  accepted.** `decompress_into` reports how much it wrote and the decoder
+  truncated to that, so `size()` and `data().len()` could disagree for a
+  damaged entry. The count is held to the claim now, like every other
+  codec's output.
+- **A run of wildcards could hang a build.** The glob matcher backtracked,
+  which is exponential on patterns like `*********x` against a name that
+  does not match; a fuzzer found a five-second input on its first attempt.
+  The matcher is a table now, and costs pattern length times name length
+  whatever the pattern.
+- **The AEAD ciphers were handed a copy of the key.** `Key::from(*key)`
+  put a third copy of it on the stack, one that neither the caller's
+  wiped array nor the cipher's wiped schedule reached. The cipher borrows
+  the caller's key now.
 - **A `Store` entry was never held to its claimed length.** Every
   compressed codec rejects a payload that disagrees with the header, but
   `Store` had no decoder to notice, so `size()` could report one number and
