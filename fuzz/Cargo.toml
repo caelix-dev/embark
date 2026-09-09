@@ -1,0 +1,43 @@
+[package]
+name = "embark-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+embark-format = { path = "../crates/embark-format", default-features = false, features = ["alloc", "enc", "dec"] }
+embark-codec = { path = "../crates/embark-codec", default-features = false, features = ["alloc", "enc", "dec", "deflate", "lz4", "snappy", "zstd", "lzma"] }
+embark-crypt = { path = "../crates/embark-crypt", default-features = false, features = ["enc", "dec", "aes"] }
+
+# The fuzz crate is its own workspace, so the root one never builds it by
+# accident and its nightly-only dependencies stay out of the lockfile.
+[workspace]
+
+# Every decoder in the toolkit reads untrusted bytes. Each target below is
+# one contract: a decoder never panics and never returns the wrong length,
+# an encoder's output always reads back, a glob never runs away.
+
+[[bin]]
+name = "entry"
+path = "fuzz_targets/entry.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "roundtrip"
+path = "fuzz_targets/roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "glob"
+path = "fuzz_targets/glob.rs"
+test = false
+doc = false
+bench = false

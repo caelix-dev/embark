@@ -1,6 +1,9 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+# The fuzz targets are their own workspace: nightly-only, never published,
+# and run with `cargo +nightly fuzz run <target>` from `fuzz/`.
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.2.1"
