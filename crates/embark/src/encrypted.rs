@@ -175,6 +175,30 @@ impl<K: KeyMode> core::fmt::Debug for EncryptedFile<K> {
     }
 }
 
+impl<K: KeyMode> EncryptedFile<K> {
+    /// The original (decompressed, decrypted) size of the file, in bytes.
+    ///
+    /// Read out of the entry header, which is stored in the clear, so this
+    /// needs no key and touches no ciphertext. `None` means the header could
+    /// not be read, or records a length this platform's `usize` cannot hold
+    /// -- distinct from `Some(0)`, which is a genuinely empty file.
+    ///
+    /// The header is bound into the AEAD tag, so a length that was rewritten
+    /// after sealing reads back here as written but fails authentication
+    /// the moment the entry is decrypted.
+    #[must_use]
+    pub fn size(&self) -> Option<usize> {
+        let header = embark_format::read_header(self.entry).ok()?;
+        usize::try_from(header.orig_len).ok()
+    }
+}
+
+fn utf8(bytes: Vec<u8>) -> Result<String> {
+    String::from_utf8(bytes).map_err(|e| Error::Utf8 {
+        valid_up_to: e.utf8_error().valid_up_to(),
+    })
+}
+
 impl EncryptedFile<EmbeddedKey> {
     /// Builds a build-time-embedded-key handle from a sealed entry and its
     /// key-reconstruction function.
@@ -225,10 +249,7 @@ impl EncryptedFile<EmbeddedKey> {
     /// for the reason [`decrypt`](EncryptedFile::decrypt) gives.
     pub fn decrypt_str(&self) -> Result<String> {
         let key = Zeroizing::new((self.key)());
-        let bytes = crate::decode::decode(self.entry, Some(&key))?.into_owned();
-        String::from_utf8(bytes).map_err(|e| Error::Utf8 {
-            valid_up_to: e.utf8_error().valid_up_to(),
-        })
+        utf8(crate::decode::decode(self.entry, Some(&key))?.into_owned())
     }
 }
 
@@ -265,5 +286,17 @@ impl EncryptedFile<RuntimeKey> {
     /// damaged.
     pub fn decrypt_with(&self, key: &[u8; 32]) -> Result<Vec<u8>> {
         Ok(crate::decode::decode(self.entry, Some(key))?.into_owned())
+    }
+
+    /// Like [`decrypt_with`](EncryptedFile::decrypt_with), but decodes the
+    /// result as UTF-8.
+    ///
+    /// # Errors
+    ///
+    /// Everything [`decrypt_with`](EncryptedFile::decrypt_with) reports,
+    /// plus [`Error::Utf8`] with the offset of the first bad byte if the
+    /// decrypted content is not UTF-8.
+    pub fn decrypt_str_with(&self, key: &[u8; 32]) -> Result<String> {
+        utf8(self.decrypt_with(key)?)
     }
 }

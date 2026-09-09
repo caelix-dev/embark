@@ -55,7 +55,24 @@ fn runtime_key_decrypts_and_rejects_wrong() {
         Box::leak(encrypted_entry(b"cfg", key, [2u8; 12]).into_boxed_slice());
     let f: EncryptedFile<embark::RuntimeKey> = EncryptedFile::with_runtime_key(entry);
     assert_eq!(f.decrypt_with(&key).unwrap(), b"cfg");
-    assert!(f.decrypt_with(&[0u8; 32]).is_err());
+    assert_eq!(f.decrypt_str_with(&key).unwrap(), "cfg");
+    assert_eq!(f.decrypt_with(&[0u8; 32]), Err(embark::Error::Auth));
+    assert_eq!(f.decrypt_str_with(&[0u8; 32]), Err(embark::Error::Auth));
+}
+
+// The length sits in the clear header, so both modes can report it without
+// a key, and an unreadable header is `None` rather than a panic.
+#[test]
+fn size_needs_no_key_in_either_mode() {
+    let key = [0x44u8; 32];
+    let entry: &'static [u8] =
+        Box::leak(encrypted_entry(b"sized", key, [3u8; 12]).into_boxed_slice());
+    assert_eq!(EncryptedFile::with_runtime_key(entry).size(), Some(5));
+    assert_eq!(
+        EncryptedFile::with_embedded_key(entry, recon_33).size(),
+        Some(5)
+    );
+    assert_eq!(EncryptedFile::with_runtime_key(&[]).size(), None);
 }
 
 // The tag covers the header, not just the payload. An entry whose codec
