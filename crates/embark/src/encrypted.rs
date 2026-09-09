@@ -170,6 +170,7 @@ pub struct EncryptedFile<K: KeyMode = EmbeddedKey> {
 impl<K: KeyMode> core::fmt::Debug for EncryptedFile<K> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("EncryptedFile")
+            .field("size", &self.size())
             .field("entry_len", &self.entry.len())
             .finish_non_exhaustive()
     }
@@ -232,24 +233,38 @@ impl EncryptedFile<EmbeddedKey> {
     /// not something a caller can trigger at runtime.
     #[must_use]
     pub fn decrypt(&self) -> Vec<u8> {
-        let key = Zeroizing::new((self.key)());
-        crate::decode::decode(self.entry, Some(&key))
+        self.try_decrypt()
             .expect("embark: embedded entry is malformed (this is a build-time bug)")
-            .into_owned()
     }
 
-    /// Like [`decrypt`](EncryptedFile::decrypt), but decodes the result as
-    /// UTF-8 and returns a `Result` (rather than panicking) if the
-    /// decrypted bytes are not valid UTF-8.
+    /// The fallible form of [`decrypt`](EncryptedFile::decrypt), for a
+    /// caller that would rather have an `Err` than a panic on a compiled-in
+    /// entry that turns out to be damaged. The counterpart of
+    /// [`EmbeddedBytes::try_data`](crate::EmbeddedBytes::try_data).
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Utf8`] with the offset of the first bad byte if the
-    /// decrypted content is not UTF-8. Decryption itself cannot fail here,
-    /// for the reason [`decrypt`](EncryptedFile::decrypt) gives.
-    pub fn decrypt_str(&self) -> Result<String> {
+    /// Returns [`Error::Auth`] if the entry does not authenticate under the
+    /// embedded key, [`Error::Corrupt`] or [`Error::Truncated`] if it is
+    /// damaged, and [`Error::UnknownCodec`] or [`Error::UnknownCrypto`] if
+    /// it names something this build did not compile in. None of these can
+    /// happen to an entry these macros built, which is why
+    /// [`decrypt`](EncryptedFile::decrypt) exists.
+    pub fn try_decrypt(&self) -> Result<Vec<u8>> {
         let key = Zeroizing::new((self.key)());
-        utf8(crate::decode::decode(self.entry, Some(&key))?.into_owned())
+        Ok(crate::decode::decode(self.entry, Some(&key))?.into_owned())
+    }
+
+    /// Like [`try_decrypt`](EncryptedFile::try_decrypt), but decodes the
+    /// result as UTF-8.
+    ///
+    /// # Errors
+    ///
+    /// Everything [`try_decrypt`](EncryptedFile::try_decrypt) reports, plus
+    /// [`Error::Utf8`] with the offset of the first bad byte if the
+    /// decrypted content is not UTF-8.
+    pub fn decrypt_str(&self) -> Result<String> {
+        utf8(self.try_decrypt()?)
     }
 }
 
