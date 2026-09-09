@@ -203,8 +203,8 @@ impl Zstd {
     /// # Errors
     ///
     /// Returns [`Error::Corrupt`] if `input` is not a valid zstd frame, if it
-    /// yields fewer than `orig_len` bytes, or if `orig_len` is more than this
-    /// target can allocate.
+    /// expands to a length other than `orig_len`, or if `orig_len` is more
+    /// than this target can allocate.
     #[cfg(feature = "dec")]
     pub fn decompress(&self, input: &[u8], orig_len: usize) -> Result<Vec<u8>, Error> {
         crate::zstd::decompress(input, orig_len)
