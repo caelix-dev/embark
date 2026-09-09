@@ -18,7 +18,7 @@ Add `embark` to `Cargo.toml`:
 
 ```toml
 [dependencies]
-embark = "0.1"
+embark = "0.2"
 ```
 
 ### `#[derive(Embed)]` — embed a whole folder
@@ -33,7 +33,7 @@ struct Assets;
 
 fn main() {
     for path in Assets::iter() {
-        let file = Assets::get(&path).unwrap();
+        let file = Assets::get(path).unwrap();
         println!("{} -> {} bytes", path, file.data().len());
     }
 }
@@ -102,10 +102,11 @@ fn main() {
 - `key = runtime` — switches the binding's type to
   `EncryptedFile<RuntimeKey>`: no key material is compiled in, and (enforced
   at compile time, not just by convention) that type has no `decrypt()`
-  method at all — only `decrypt_with(&key)`, which returns a `Result` since
-  the wrong key fails to authenticate. Omitted by default, which embeds a
-  build-time key and gives you the infallible `decrypt()` / `decrypt_str()`
-  instead.
+  method at all — only `decrypt_with(&key)` and `decrypt_str_with(&key)`,
+  which return a `Result` since the wrong key fails to authenticate.
+  Omitted by default, which embeds a build-time key and gives you the
+  infallible `decrypt()` / `decrypt_str()` instead. Both modes have
+  `size()`, which reads the length from the clear header without a key.
 
   **This mode needs `EMBARK_KEY` set at build time**, as 64 hex characters
   (a 32-byte key):
@@ -243,7 +244,7 @@ assets by request path cannot be asked for `../.env`.
 | Feature      | Default | Enables |
 |--------------|:-------:|---------|
 | `std`        | yes     | `std`-dependent APIs (dev-mode file reads, etc.) |
-| `alloc`      | yes     | `alloc`-only APIs; use with `--no-default-features` for `no_std` |
+| `alloc`      | yes     | nothing: `alloc` is always linked, and the flag is kept so older manifests that name it keep resolving |
 | `derive`     | yes     | `#[derive(Embed)]`, `embed_bytes!`, `embed_crypt!` proc macros |
 | `deflate`    | yes     | the Deflate codec (a candidate from `auto` out) |
 | `lz4`        | no      | the LZ4 codec (a candidate in every `auto` policy) |
@@ -255,8 +256,8 @@ assets by request path cannot be asked for `../.env`.
 | `metadata`   | no      | per-entry metadata helpers (e.g. content hashing) |
 | `parallel-encode` | yes | lets the build-time encoder use every core; adds nothing to your binary |
 
-For `no_std` targets, build with `--no-default-features` and select `alloc`
-plus whichever codec features you need; see the `no_std` job in
+For `no_std` targets, build with `--no-default-features` and whichever
+codec features you need; see the `no_std` job in
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) for a worked example
 against `thumbv7em-none-eabihf`.
 

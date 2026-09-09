@@ -26,10 +26,12 @@ cargo test --workspace --all-features
 ```
 
 If your change touches feature flags, it's worth also checking a build
-doesn't silently depend on a feature it didn't declare:
+doesn't silently depend on a feature it didn't declare. This is the sweep
+CI runs (every single feature and every pair, with the lints on, since a
+degenerate combination usually still compiles and only warns):
 
 ```sh
-cargo hack check --workspace --feature-powerset --group-features deflate,lz4,snappy,zstd,lzma --group-features encryption,aes
+cargo hack clippy --workspace --feature-powerset --depth 2 -- -D warnings
 ```
 
 For `no_std` and cross-codec interop, see the `no_std` and `interop` jobs

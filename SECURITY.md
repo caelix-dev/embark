@@ -2,9 +2,8 @@
 
 ## Supported versions
 
-`embark` is pre-1.0 (currently `0.1.x`). Until a `1.0` release, only the
-most recently published version on crates.io is supported with security
-fixes.
+`embark` is pre-1.0. Until a `1.0` release, only the most recently
+published version on crates.io is supported with security fixes.
 
 ## Reporting a vulnerability
 
@@ -35,7 +34,7 @@ model for the encryption feature; the short version:
 - **`key = runtime` (`EncryptedFile<RuntimeKey>`) is the mode intended for
   real secrets.** No key material is compiled in; the caller supplies the
   key at run time, and the type has no infallible `decrypt()` at all, only
-  `decrypt_with(&key)`.
+  the keyed `decrypt_with(&key)` and `decrypt_str_with(&key)`.
 
 What **is** in scope for a security report:
 
