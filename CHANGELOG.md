@@ -5,6 +5,76 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+A pass over every crate at once, rather than over one concern: what each
+decoder accepts, where key material sits, and what the macros do with an
+argument they were not expecting.
+
+### Added
+
+- `EncryptedFile::size()`, in both key modes. The claimed length sits in
+  the clear header, so it needs no key; `EmbeddedBytes` and `EmbeddedFile`
+  already had it.
+- `EncryptedFile<RuntimeKey>::decrypt_str_with`, the UTF-8 form that
+  `decrypt_str` already gave the embedded-key mode.
+- `embark_crypt::Zeroizing`, re-exported from `zeroize`, for a caller that
+  holds a key only as long as one `open` call.
+
+### Fixed
+
+- **A `Store` entry was never held to its claimed length.** Every
+  compressed codec rejects a payload that disagrees with the header, but
+  `Store` had no decoder to notice, so `size()` could report one number and
+  `data()` return another. It is `Corrupt` now, like the rest.
+- **The rebuilt embedded key was left on the stack after decrypting.** The
+  reconstruction function hands back a plain `[u8; 32]`, and the decode
+  path took it by value, so a copy stayed behind in dead stack frames. The
+  key is borrowed now, and the one copy lives in a wrapper wiped when the
+  call returns. The build side does the same with the key it draws and
+  with the one it reads from `EMBARK_KEY`.
+- **A glob `?` matched one byte, not one character.** `?.png` missed
+  `é.png`, and `*` could leave a match attempt in the middle of a
+  multi-byte character.
+- **A macro argument given twice silently kept the last one.** `codec =
+  lz4, codec = zstd` compressed with zstd and said nothing. It is an error
+  at the repeated argument now, for `embed_crypt!` and for every
+  `#[embark(...)]` key that names one value; `include` and `exclude` still
+  repeat, as documented.
+- **Over-long varints were read with their high bits dropped.** A tenth
+  byte with more than one bit set is not an encoding of any `u64`, and
+  `read_varint` accepted it. Snappy's length preamble had the same gap past
+  the thirty-second bit. Both are `Corrupt` now.
+- **The LZMA decoder sized its literal tables from the header, infallibly.**
+  `lc + lp` can be twelve under the format, which is six mebibytes of
+  probabilities, allocated with a plain `vec!` on whatever target is
+  decoding. The allocation is fallible now, and a refusal is `Corrupt`.
+- **`parallel::map` kept borrowed workers if the encoder panicked and the
+  panic was caught.** They go back to the budget on every way out.
+
+### Changed
+
+- `EmbeddedFile::hash()` hashes the decoded bytes in place instead of
+  copying them into a padded buffer first, which halves its peak memory
+  on a large asset.
+
+### Removed
+
+- The hidden `embark::__sha256_for_test`. The hash is exercised through
+  `EmbeddedFile::hash()` and by known-answer tests inside the crate, so
+  the public API no longer carries a test hook.
+
+### Documentation
+
+- The `embark` feature list names `zstd`, `lzma` and `parallel-encode`.
+- What `#[embark(dev)]` does under `encrypt`: a debug build serves the
+  file as it is on disk, in the clear.
+- The cipher docs on `embed_crypt!` and the derive point at
+  `EncryptedFile`, where the threat model is actually written down; they
+  used to point at a note that does not exist.
+- `embark-crypt` no longer says the ciphers run with empty associated
+  data. The entry header has been associated data since 0.2.0.
+
 ## [0.2.1] - 2026-09-07
 
 A second pass over the cryptography's surroundings: not the ciphers, but
