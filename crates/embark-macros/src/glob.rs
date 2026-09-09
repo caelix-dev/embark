@@ -16,6 +16,17 @@
 ///   `a/b` as well as `a/x/y/b`, and `a/**` matches everything under `a`.
 ///   Elsewhere it is simply a `*` that may cross `/`.
 pub(crate) fn matches(pattern: &str, name: &str) -> bool {
+    // Both sides are UTF-8, and every step below moves the name forward by
+    // one whole character, so `?` counts characters and a wildcard never
+    // leaves a match attempt in the middle of one.
+    fn width(lead: u8) -> usize {
+        match lead {
+            0x00..=0x7f => 1,
+            0xc0..=0xdf => 2,
+            0xe0..=0xef => 3,
+            _ => 4,
+        }
+    }
     fn rec(p: &[u8], n: &[u8]) -> bool {
         match p.first() {
             None => n.is_empty(),
@@ -36,11 +47,17 @@ pub(crate) fn matches(pattern: &str, name: &str) -> bool {
                             .any(|(at, &c)| c == b'/' && rec(p, &n[at + 1..]))
                     }
                     // `**` against anything else is a `*` that may cross `/`.
-                    _ => rec(rest, n) || (!n.is_empty() && rec(p, &n[1..])),
+                    _ => rec(rest, n) || n.first().is_some_and(|&c| rec(p, &n[width(c)..])),
                 }
             }
-            Some(b'*') => rec(&p[1..], n) || (!n.is_empty() && n[0] != b'/' && rec(p, &n[1..])),
-            Some(b'?') => !n.is_empty() && n[0] != b'/' && rec(&p[1..], &n[1..]),
+            Some(b'*') => {
+                rec(&p[1..], n)
+                    || n.first()
+                        .is_some_and(|&c| c != b'/' && rec(p, &n[width(c)..]))
+            }
+            Some(b'?') => n
+                .first()
+                .is_some_and(|&c| c != b'/' && rec(&p[1..], &n[width(c)..])),
             Some(&c) => !n.is_empty() && n[0] == c && rec(&p[1..], &n[1..]),
         }
     }
@@ -64,6 +81,20 @@ mod tests {
         assert!(matches("a?c.txt", "abc.txt"));
         assert!(!matches("a?c.txt", "ac.txt"));
         assert!(!matches("a?c", "a/c"));
+    }
+
+    // A character, not a byte: `é` is two bytes, `日` three and `😀` four,
+    // and each is one `?`.
+    #[test]
+    fn a_question_mark_is_one_character_in_any_script() {
+        assert!(matches("?.png", "é.png"));
+        assert!(matches("?.png", "日.png"));
+        assert!(matches("?.png", "😀.png"));
+        assert!(!matches("??.png", "é.png"));
+        assert!(matches("caf?.txt", "café.txt"));
+        assert!(matches("*é.txt", "café.txt"));
+        assert!(matches("caf*", "café.txt"));
+        assert!(matches("**/?.png", "sub/日.png"));
     }
 
     #[test]
