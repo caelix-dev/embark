@@ -19,7 +19,7 @@ pub(crate) fn decode(
     orig_len: usize,
 ) -> Result<Vec<u8>, Error> {
     let mut rc = RangeDecoder::new(stream).ok_or(Error::Corrupt)?;
-    let mut model = LzmaModel::new(lc, lp, pb);
+    let mut model = LzmaModel::new(lc, lp, pb).ok_or(Error::Corrupt)?;
 
     // `orig_len` is the caller-supplied, attacker-controllable uncompressed
     // size from the entry header; `RangeDecoder::new` above only requires 5

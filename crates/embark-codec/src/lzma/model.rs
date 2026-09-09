@@ -2,7 +2,6 @@
 //! driven by the decoder.
 
 extern crate alloc;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::rangecoder::RangeDecoder;
@@ -76,13 +75,20 @@ pub(crate) struct LzmaModel {
 }
 
 impl LzmaModel {
-    pub(crate) fn new(lc: u32, lp: u32, pb: u32) -> Self {
+    /// `None` if the literal tables cannot be allocated. Their size is set
+    /// by `lc + lp`, which the header names and the format allows up to 12,
+    /// so a hostile header can ask for six mebibytes of probabilities from
+    /// a target that has nothing like that to give.
+    pub(crate) fn new(lc: u32, lp: u32, pb: u32) -> Option<Self> {
         let lit_size = 0x300usize << (lc + lp);
-        Self {
+        let mut lit = Vec::new();
+        lit.try_reserve_exact(lit_size).ok()?;
+        lit.resize(lit_size, INIT_PROB);
+        Some(Self {
             lc,
             lp_mask: (1u32 << lp) - 1,
             pb_mask: (1usize << pb) - 1,
-            lit: vec![INIT_PROB; lit_size],
+            lit,
             pos_slot: [[INIT_PROB; 64]; NUM_LEN_TO_POS],
             spec_pos: [INIT_PROB; SPEC_POS_LEN],
             align: [INIT_PROB; 1 << NUM_ALIGN_BITS],
@@ -94,7 +100,7 @@ impl LzmaModel {
             is_rep_g2: [INIT_PROB; NUM_STATES],
             is_rep0_long: [[INIT_PROB; POS_STATES_MAX]; NUM_STATES],
             rep_len_coder: LenCoder::new(),
-        }
+        })
     }
 
     #[inline]
