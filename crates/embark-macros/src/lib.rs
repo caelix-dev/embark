@@ -198,7 +198,7 @@ fn expand_crypt(parsed: crypt_args::CryptArgs) -> syn::Result<proc_macro2::Token
     };
     let sealed = crypt::seal_file(&data, codec, crypto, mode, &shown, span)?;
     let entry_lit = build::bytes_literal(&sealed.entry);
-    Ok(match sealed.key {
+    Ok(match &sealed.key {
         Some(key) => {
             // Emit a per-build-randomized key-reconstruction fn and hand its
             // pointer to `with_embedded_key`. The whole thing is a block

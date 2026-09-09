@@ -1,5 +1,6 @@
 use crate::args::{CodecArg, parse_codec};
 use crate::{build, crypt, glob};
+use embark_crypt::Zeroizing;
 use embark_format::{CodecId, CryptoId};
 use quote::quote;
 use std::collections::HashSet;
@@ -42,12 +43,11 @@ pub(crate) fn expand(input: &syn::DeriveInput) -> syn::Result<proc_macro2::Token
     )?;
     files.sort();
 
-    // One build-time key per derive when encrypting.
-    let key_material = if cfg.encrypt {
-        Some(embark_crypt::gen_key_nonce().0)
-    } else {
-        None
-    };
+    // One build-time key per derive when encrypting. It is only ever lent
+    // out from here, and wiped when the expansion is done with it.
+    let key_material = cfg
+        .encrypt
+        .then(|| Zeroizing::new(embark_crypt::gen_key_nonce().0));
 
     // One folder is many files, and a file is read, compressed and sealed
     // without reference to any other: the shared key was drawn above, before
@@ -67,7 +67,7 @@ pub(crate) fn expand(input: &syn::DeriveInput) -> syn::Result<proc_macro2::Token
     let (codec, cipher) = (cfg.codec, cfg.cipher);
     let built = embark_codec::parallel::map(&jobs, |(shown, abs)| {
         let data = build::read(abs, shown)?;
-        match key_material {
+        match &key_material {
             Some(key) => crypt::seal_with_key(&data, codec, cipher, key, shown),
             None => build::build_entry(codec, &data, shown),
         }
@@ -89,7 +89,7 @@ pub(crate) fn expand(input: &syn::DeriveInput) -> syn::Result<proc_macro2::Token
     // When encrypting, emit ONE per-build-randomized key-reconstruction fn for
     // the whole derive (all files share the key) and hand its pointer to
     // `lookup_encrypted`. The fn item is spliced into the `const _` block below.
-    let (recon_fn, get_body) = if let Some(key) = key_material {
+    let (recon_fn, get_body) = if let Some(key) = &key_material {
         let (recon_fn, recon_name) = crate::obfuscate::emit_key_recon(key);
         (
             recon_fn,

@@ -320,13 +320,13 @@ fn plan(rng: &mut Rng, key: [u8; 32]) -> Plan {
 /// Returns the `fn` item (to be spliced into the caller's crate) and its
 /// (also random) name. Calling that function at runtime returns exactly
 /// `key`. See the module docs for the guarantees and caveats.
-pub(crate) fn emit_key_recon(key: [u8; 32]) -> (TokenStream, syn::Ident) {
+pub(crate) fn emit_key_recon(key: &[u8; 32]) -> (TokenStream, syn::Ident) {
     let mut rng = Rng::new();
     let Plan {
         program,
         shares,
         decoys,
-    } = plan(&mut rng, key);
+    } = plan(&mut rng, *key);
 
     let name = format_ident!("__embark_recon_{:016x}", rng.next_u64());
 
@@ -476,8 +476,8 @@ mod tests {
     #[test]
     fn emitted_reconstructions_vary_per_build() {
         let key = [0x42u8; 32];
-        let (a_tokens, a_name) = emit_key_recon(key);
-        let (b_tokens, b_name) = emit_key_recon(key);
+        let (a_tokens, a_name) = emit_key_recon(&key);
+        let (b_tokens, b_name) = emit_key_recon(&key);
         assert_ne!(
             a_name.to_string(),
             b_name.to_string(),

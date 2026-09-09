@@ -1,6 +1,6 @@
 use crate::args::CodecArg;
 use crate::build;
-use embark_crypt::{gen_key_nonce, seal};
+use embark_crypt::{Zeroizing, gen_key_nonce, seal};
 use embark_format::{CodecId, CryptoId, write_entry, write_header};
 use proc_macro2::Span;
 
@@ -15,8 +15,9 @@ pub(crate) enum KeyMode {
 pub(crate) struct Sealed {
     pub entry: Vec<u8>,
     // The build-time key for embedded-key mode, from which the caller emits a
-    // randomized reconstruction function; `None` in runtime-key mode.
-    pub key: Option<[u8; 32]>,
+    // randomized reconstruction function; `None` in runtime-key mode. Wiped
+    // when the expansion drops it.
+    pub key: Option<Zeroizing<[u8; 32]>>,
 }
 
 // Hand-written rather than derived: `key` is live key material, and a derived
@@ -26,7 +27,7 @@ impl std::fmt::Debug for Sealed {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Sealed")
             .field("entry_len", &self.entry.len())
-            .field("key", &self.key.map(|_| "[redacted]"))
+            .field("key", &self.key.as_ref().map(|_| "[redacted]"))
             .finish()
     }
 }
@@ -53,15 +54,17 @@ pub(crate) fn seal_file(
     let (codec, compressed) =
         build::compress_verified(codec, data, shown).map_err(build::at(span))?;
 
-    let (key, nonce, embedded_key) = match mode {
+    // Either key is held in one place and wiped from there; the runtime one
+    // was read out of the environment and has no business outliving this.
+    let (key, nonce, embed) = match mode {
         KeyMode::BuildTime => {
             let (key, nonce) = gen_key_nonce();
-            (key, nonce, Some(key))
+            (Zeroizing::new(key), nonce, true)
         }
         KeyMode::Runtime(key_span) => {
             let key = env_key().map_err(|msg| syn::Error::new(key_span, msg))?;
             let (_, nonce) = gen_key_nonce();
-            (key, nonce, None)
+            (key, nonce, false)
         }
     };
 
@@ -83,7 +86,7 @@ pub(crate) fn seal_file(
     );
     Ok(Sealed {
         entry,
-        key: embedded_key,
+        key: embed.then_some(key),
     })
 }
 
@@ -96,7 +99,7 @@ fn header(codec: CodecId, crypto: CryptoId, data: &[u8]) -> Vec<u8> {
     out
 }
 
-fn env_key() -> Result<[u8; 32], String> {
+fn env_key() -> Result<Zeroizing<[u8; 32]>, String> {
     let raw = std::env::var("EMBARK_KEY").map_err(|_| {
         "embark: `key = runtime` needs the EMBARK_KEY environment variable (64 hex characters, a 32-byte key) set at build time"
             .to_string()
@@ -110,7 +113,7 @@ fn env_key() -> Result<[u8; 32], String> {
             hex.chars().count()
         ));
     }
-    let mut key = [0u8; 32];
+    let mut key = Zeroizing::new([0u8; 32]);
     for (i, b) in key.iter_mut().enumerate() {
         *b = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16)
             .map_err(|e| format!("embark: EMBARK_KEY is not valid hex: {e}"))?;
@@ -125,14 +128,14 @@ pub(crate) fn seal_with_key(
     data: &[u8],
     codec: CodecArg,
     crypto: CryptoId,
-    key: [u8; 32],
+    key: &[u8; 32],
     shown: &str,
 ) -> Result<Vec<u8>, String> {
     let (codec, compressed) = build::compress_verified(codec, data, shown)?;
     let (_, nonce) = gen_key_nonce(); // fresh per-file nonce
     let (ct, tag) = seal(
         crypto,
-        &key,
+        key,
         &nonce,
         &header(codec, crypto, data),
         &compressed,
@@ -158,7 +161,7 @@ mod tests {
         let key = [0x7Fu8; 32];
         let sealed = Sealed {
             entry: vec![1, 2, 3],
-            key: Some(key),
+            key: Some(Zeroizing::new(key)),
         };
         let shown = format!("{sealed:?}");
         assert!(shown.contains("[redacted]"), "{shown}");
