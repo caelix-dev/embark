@@ -130,6 +130,28 @@ jobs:
       # catches an import or a module that is dead under some combination.
       - run: cargo hack clippy --workspace --feature-powerset --depth 2 -- -D warnings
 
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      # A minute per target is a smoke test, not a fuzzing session: it
+      # proves the targets still build and that nothing shallow regressed.
+      # The lz4 length bug and the exponential glob were both found in
+      # under a minute, so it is a minute worth spending on every push.
+      - run: cargo fuzz run entry -- -max_total_time=60 -timeout=20
+        working-directory: fuzz
+      - run: cargo fuzz run roundtrip -- -max_total_time=60 -max_len=65536 -timeout=60
+        working-directory: fuzz
+      - run: cargo fuzz run glob -- -max_total_time=60 -timeout=5
+        working-directory: fuzz
+
   deny:
     runs-on: ubuntu-latest
     steps:

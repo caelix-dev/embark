@@ -38,6 +38,28 @@ For `no_std` and cross-codec interop, see the `no_std` and `interop` jobs
 in the CI workflow — they're the easiest way to reproduce those locally
 too (same commands, just run them yourself).
 
+### Fuzzing
+
+Every decoder reads untrusted bytes, so the decoders, the encoders' round
+trips and the glob matcher each have a fuzz target under [`fuzz/`](fuzz/).
+They need nightly and [`cargo-fuzz`](https://github.com/rust-fuzz/cargo-fuzz):
+
+```sh
+cargo install cargo-fuzz --locked
+cd fuzz
+cargo +nightly fuzz run entry      -- -max_total_time=600
+cargo +nightly fuzz run roundtrip  -- -max_total_time=600 -max_len=65536
+cargo +nightly fuzz run glob       -- -max_total_time=120 -timeout=5
+```
+
+CI runs each for a minute as a smoke test; a real session is hours. If
+a target finds something, turn the input into a unit test next to the
+code it broke rather than committing the artifact.
+
+On Windows the targets build with AddressSanitizer and need its runtime
+DLL on `PATH` at run time; the one under Visual Studio's
+`VC/Tools/MSVC/<ver>/bin/Hostx64/x64` works with a current nightly.
+
 ## Commit messages
 
 - Subjects are **lowercase** and use a
