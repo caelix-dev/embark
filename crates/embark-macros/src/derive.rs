@@ -294,13 +294,26 @@ fn included(cfg: &Config, rel: &str) -> bool {
 
 fn parse_config(input: &syn::DeriveInput) -> syn::Result<Config> {
     let mut folder: Option<LitStr> = None;
-    let mut codec = CodecArg::Fixed(CodecId::Deflate);
-    let mut cipher = CryptoId::ChaCha20Poly1305;
+    let mut codec: Option<CodecArg> = None;
+    let mut cipher: Option<CryptoId> = None;
     let mut encrypt = false;
     let mut dev = false;
     let mut follow_links = false;
     let mut include = Vec::new();
     let mut exclude = Vec::new();
+
+    // `include` and `exclude` are lists, so they repeat. Everything else
+    // names one value, and a second one would silently replace the first.
+    let once = |seen: bool, meta: &syn::meta::ParseNestedMeta<'_>| {
+        if seen {
+            let key = meta
+                .path
+                .get_ident()
+                .map_or_else(String::new, |k| k.to_string());
+            return Err(meta.error(format!("`{key}` given more than once")));
+        }
+        Ok(())
+    };
 
     for attr in &input.attrs {
         if !attr.path().is_ident("embark") {
@@ -308,31 +321,39 @@ fn parse_config(input: &syn::DeriveInput) -> syn::Result<Config> {
         }
         attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("folder") {
+                once(folder.is_some(), &meta)?;
                 folder = Some(meta.value()?.parse()?);
             } else if meta.path.is_ident("codec") {
+                once(codec.is_some(), &meta)?;
                 let s: syn::LitStr = meta.value()?.parse()?;
                 let name = s.value();
-                codec = parse_codec(&name)
-                    .ok_or_else(|| meta.error(format!("unknown codec `{name}`")))?;
+                codec = Some(
+                    parse_codec(&name)
+                        .ok_or_else(|| meta.error(format!("unknown codec `{name}`")))?,
+                );
             } else if meta.path.is_ident("cipher") {
+                once(cipher.is_some(), &meta)?;
                 let s: syn::LitStr = meta.value()?.parse()?;
-                match s.value().as_str() {
-                    "chacha" => cipher = CryptoId::ChaCha20Poly1305,
+                cipher = Some(match s.value().as_str() {
+                    "chacha" => CryptoId::ChaCha20Poly1305,
                     "aes" => {
                         if !cfg!(feature = "aes") {
                             return Err(meta.error(
                                 "cipher = \"aes\" requires the `aes` feature enabled on `embark`",
                             ));
                         }
-                        cipher = CryptoId::Aes256Gcm;
+                        CryptoId::Aes256Gcm
                     }
                     other => return Err(meta.error(format!("unknown cipher `{other}`"))),
-                }
+                });
             } else if meta.path.is_ident("encrypt") {
+                once(encrypt, &meta)?;
                 encrypt = true;
             } else if meta.path.is_ident("dev") {
+                once(dev, &meta)?;
                 dev = true;
             } else if meta.path.is_ident("follow_links") {
+                once(follow_links, &meta)?;
                 follow_links = true;
             } else if meta.path.is_ident("include") {
                 let s: syn::LitStr = meta.value()?.parse()?;
@@ -356,8 +377,8 @@ fn parse_config(input: &syn::DeriveInput) -> syn::Result<Config> {
 
     Ok(Config {
         folder,
-        codec,
-        cipher,
+        codec: codec.unwrap_or(CodecArg::Fixed(CodecId::Deflate)),
+        cipher: cipher.unwrap_or(CryptoId::ChaCha20Poly1305),
         encrypt,
         dev,
         follow_links,

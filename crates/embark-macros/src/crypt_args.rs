@@ -45,6 +45,18 @@ impl CryptArgs {
     }
 }
 
+/// A second `codec = ...` would silently replace the first, and the one
+/// that wins is whichever the parser happened to see last.
+fn once<T>(slot: &Option<T>, key: &syn::Ident) -> syn::Result<()> {
+    if slot.is_some() {
+        return Err(syn::Error::new(
+            key.span(),
+            format!("`{key}` given more than once"),
+        ));
+    }
+    Ok(())
+}
+
 impl Parse for CryptArgs {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let path: LitStr = input.parse()?;
@@ -57,12 +69,14 @@ impl Parse for CryptArgs {
             let key: syn::Ident = input.parse()?;
             let _: Token![=] = input.parse()?;
             if key == "codec" {
+                once(&codec, &key)?;
                 let val: syn::Ident = input.parse()?;
                 let name = val.to_string();
                 codec = Some(parse_codec(&name).ok_or_else(|| {
                     syn::Error::new(val.span(), format!("unknown codec `{name}`"))
                 })?);
             } else if key == "cipher" {
+                once(&cipher, &key)?;
                 let val: syn::Ident = input.parse()?;
                 cipher = Some(match val.to_string().as_str() {
                     "chacha" => CipherArg::ChaCha,
@@ -83,6 +97,7 @@ impl Parse for CryptArgs {
                     }
                 });
             } else if key == "key" {
+                once(&runtime_key, &key)?;
                 let val: syn::Ident = input.parse()?;
                 if val != "runtime" {
                     return Err(syn::Error::new(val.span(), "expected `runtime`"));

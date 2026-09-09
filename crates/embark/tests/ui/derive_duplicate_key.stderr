@@ -1,0 +1,5 @@
+error: `codec` given more than once
+ --> tests/ui/derive_duplicate_key.rs:5:10
+  |
+5 | #[embark(codec = "store")]
+  |          ^^^^^

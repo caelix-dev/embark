@@ -22,6 +22,7 @@ fn ui() {
 
     t.compile_fail("tests/ui/crypt_unknown_cipher.rs");
     t.compile_fail("tests/ui/crypt_bad_key_mode.rs");
+    t.compile_fail("tests/ui/crypt_duplicate_arg.rs");
     // Only an error while the feature is off; with `aes` enabled the same
     // call is accepted and fails later, on the missing asset.
     #[cfg(not(feature = "aes"))]
@@ -30,6 +31,7 @@ fn ui() {
     t.compile_fail("tests/ui/derive_missing_folder.rs");
     t.compile_fail("tests/ui/derive_unknown_codec.rs");
     t.compile_fail("tests/ui/derive_unknown_key.rs");
+    t.compile_fail("tests/ui/derive_duplicate_key.rs");
     t.compile_fail("tests/ui/derive_on_enum.rs");
     t.compile_fail("tests/ui/derive_with_fields.rs");
     t.compile_fail("tests/ui/derive_generic_struct.rs");

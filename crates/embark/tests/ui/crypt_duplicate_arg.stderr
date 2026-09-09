@@ -1,0 +1,5 @@
+error: `cipher` given more than once
+ --> tests/ui/crypt_duplicate_arg.rs:2:70
+  |
+2 |     let _ = embark::embed_crypt!("assets/data.bin", cipher = chacha, cipher = chacha);
+  |                                                                      ^^^^^^
