@@ -5,11 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.2] - 2026-09-10
 
-A pass over every crate at once, rather than over one concern: what each
-decoder accepts, where key material sits, and what the macros do with an
-argument they were not expecting.
+Three review passes over every crate at once, rather than over one
+concern: what each decoder accepts, where key material sits, what the
+macros do with an argument they were not expecting, and, for the last
+pass, what a fuzzer finds when it is pointed at all of it.
 
 ### Added
 
