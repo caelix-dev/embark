@@ -5,8 +5,9 @@
 //! [`seal`] and [`open`] dispatch on that id at runtime; [`ChaCha20Poly1305`]
 //! and, behind the `aes` feature, [`Aes256Gcm`] are the same two ciphers
 //! named as types, through the sealed [`Aead`] trait. Both take a 32-byte
-//! key and a 12-byte nonce and produce a detached 16-byte tag, and both are
-//! always used with empty associated data.
+//! key and a 12-byte nonce and produce a detached 16-byte tag over the
+//! payload and whatever associated data is passed; `embark` passes the
+//! entry header, so its codec and claimed length are bound into the tag.
 //!
 //! [`gen_key_nonce`] draws a fresh key and nonce for one entry from the
 //! operating system generator, and [`xor32`] is the masking primitive behind
