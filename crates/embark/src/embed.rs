@@ -239,6 +239,10 @@ impl core::iter::FusedIterator for Entries {}
 /// Looks up an unencrypted, compiled-in file by path (binary search) in a
 /// `#[derive(Embed)]` manifest. Used internally by the derive's generated
 /// `get()`; not normally called directly.
+///
+/// The manifest has to be sorted by `path`, byte-wise ascending, which is
+/// how the derive emits it. A hand-built one that is not sorted misses
+/// entries it holds.
 #[must_use]
 pub fn lookup(manifest: &'static [Manifest], path: &str) -> Option<EmbeddedFile> {
     let idx = manifest.binary_search_by(|m| m.path.cmp(path)).ok()?;
@@ -266,7 +270,8 @@ pub fn entries(manifest: &'static [Manifest]) -> Entries {
 /// key-reconstruction function. Used internally by the derive's generated
 /// `get()` when `#[embark(encrypt)]` is set; not normally called directly.
 /// See [`EncryptedFile`](crate::EncryptedFile) for why the build-time key is
-/// obfuscation, not security.
+/// obfuscation, not security. As with [`lookup`], the manifest has to be
+/// sorted by `path`.
 #[cfg(feature = "encryption")]
 pub fn lookup_encrypted(
     manifest: &'static [Manifest],
