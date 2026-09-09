@@ -39,6 +39,30 @@ fn deflate_entry_owns_and_decodes() {
     assert_eq!(&*eb.data(), &data[..]);
 }
 
+// `Store` has no decoder to notice a length disagreement, so the decode
+// path checks the claim itself: `size()` and `data().len()` have to agree,
+// as they do for every compressed codec.
+#[test]
+fn store_entry_with_a_wrong_claimed_length_is_corrupt() {
+    for claimed in [4u64, 6] {
+        let mut entry = Vec::new();
+        write_entry(
+            &mut entry,
+            CodecId::Store,
+            CryptoId::None,
+            claimed,
+            None,
+            b"plain",
+        );
+        let entry: &'static [u8] = Box::leak(entry.into_boxed_slice());
+        assert_eq!(
+            EmbeddedBytes::from_entry(entry).try_data(),
+            Err(embark::Error::Corrupt),
+            "claimed {claimed} for a 5-byte payload"
+        );
+    }
+}
+
 #[test]
 fn size_is_none_for_an_unreadable_header() {
     let eb = EmbeddedBytes::from_entry(&[]);

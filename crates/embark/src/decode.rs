@@ -46,16 +46,22 @@ pub(crate) fn decode(entry: &'static [u8], key: Option<[u8; 32]>) -> Result<Cow<
         _ => return Err(Error::UnknownCrypto(header.crypto.as_u8())),
     };
 
-    // Decompression stage. For Store the plaintext is already the final bytes,
-    // so we return it as-is (Borrowed for Store+plaintext, keeping the zero-copy
-    // path; Owned if it was decrypted above).
-    if header.codec == CodecId::Store {
-        return Ok(plaintext);
-    }
     // The claim is a `u64` because the format is; on a 32-bit target a claim
     // above `usize::MAX` would wrap under `as`, and a wrapped claim is one a
     // decoder could accidentally satisfy.
     let orig = usize::try_from(header.orig_len).map_err(|_| Error::Corrupt)?;
+
+    // Decompression stage. For Store the plaintext is already the final
+    // bytes, so it is returned as-is (Borrowed for Store+plaintext, keeping
+    // the zero-copy path; Owned if it was decrypted above). The claim is
+    // still held to: it is what `size()` reports, and every other codec
+    // treats a payload that disagrees with it as a damaged entry.
+    if header.codec == CodecId::Store {
+        if plaintext.len() != orig {
+            return Err(Error::Corrupt);
+        }
+        return Ok(plaintext);
+    }
     let out: Vec<u8> = embark_codec::decompress(header.codec, &plaintext, orig)?;
     Ok(Cow::Owned(out))
 }
