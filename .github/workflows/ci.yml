@@ -145,11 +145,15 @@ jobs:
       # proves the targets still build and that nothing shallow regressed.
       # The lz4 length bug and the exponential glob were both found in
       # under a minute, so it is a minute worth spending on every push.
-      - run: cargo fuzz run entry -- -max_total_time=60 -timeout=20
+      #
+      # The target is spelled out because the prebuilt cargo-fuzz binary is
+      # a musl build, and without it cargo-fuzz would build the targets for
+      # musl too, where the sanitizer cannot link against a static libc.
+      - run: cargo fuzz run --target x86_64-unknown-linux-gnu entry -- -max_total_time=60 -timeout=20
         working-directory: fuzz
-      - run: cargo fuzz run roundtrip -- -max_total_time=60 -max_len=65536 -timeout=60
+      - run: cargo fuzz run --target x86_64-unknown-linux-gnu roundtrip -- -max_total_time=60 -max_len=65536 -timeout=60
         working-directory: fuzz
-      - run: cargo fuzz run glob -- -max_total_time=60 -timeout=5
+      - run: cargo fuzz run --target x86_64-unknown-linux-gnu glob -- -max_total_time=60 -timeout=5
         working-directory: fuzz
 
   deny:
