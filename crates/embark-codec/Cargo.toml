@@ -35,7 +35,7 @@ ruzstd = { version = "0.9", default-features = false, optional = true }
 # features are all dropped -- "std" would pull in std::io, "optimization" is
 # the crate's only unsafe code, and "lzip"/"xz" are container formats we do
 # not emit (the latter would also drag in sha2).
-lzma-rust2 = { version = "0.20.1", default-features = false, features = ["encoder"], optional = true }
+lzma-rust2 = { version = "0.22.0", default-features = false, features = ["encoder"], optional = true }
 
 [features]
 default = []
